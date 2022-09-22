@@ -1,3 +1,4 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/loss.py
 # Loss functions
 
 import torch

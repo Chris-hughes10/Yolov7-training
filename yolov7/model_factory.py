@@ -7,10 +7,8 @@ from yolov7.migrated.utils.torch_utils import intersect_dicts
 
 
 def create_yolov7_model(
-    config="yolov7-e6e.yaml", state_dict_path=None, num_classes=80, num_channels=3, anchors=None
+    config="yolov7.yaml", state_dict_path=None, num_classes=80, num_channels=3, anchors=None
 ):
-    # with distributed zero first, local_process_zero_first decorator from pt acc
-
     with open(config, "r") as file:
         model_cfg = yaml.safe_load(file)
 

@@ -1,3 +1,4 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/general.py
 # YOLOR general utils
 
 import glob

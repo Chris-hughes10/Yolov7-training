@@ -1,3 +1,4 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/plots.py
 # Plotting utils
 
 import glob
@@ -18,8 +19,8 @@ import yaml
 from PIL import Image, ImageDraw, ImageFont
 from scipy.signal import butter, filtfilt
 
-from yolo7_utils.migrated.utils.general import xywh2xyxy, xyxy2xywh
-from yolo7_utils.migrated.utils.metrics import fitness
+from yolov7.migrated.utils.general import xywh2xyxy, xyxy2xywh
+from yolov7.migrated.utils.metrics import fitness
 
 # Settings
 matplotlib.rc("font", **{"size": 11})

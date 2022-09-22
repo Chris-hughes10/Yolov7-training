@@ -1,3 +1,4 @@
+# https://github.com/WongKinYiu/yolov7/blob/main/utils/torch_utils.py
 # YOLOR PyTorch utils
 
 import datetime

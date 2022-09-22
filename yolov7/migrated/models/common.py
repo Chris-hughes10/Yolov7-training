@@ -1,3 +1,5 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/models/common.py
+
 import math
 from copy import copy
 from pathlib import Path

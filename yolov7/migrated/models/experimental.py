@@ -1,3 +1,5 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/models/experimental.py
+
 import numpy as np
 import random
 import torch

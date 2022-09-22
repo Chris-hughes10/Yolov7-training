@@ -1,3 +1,4 @@
+# Copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/google_utils.py
 # Google utils: https://cloud.google.com/storage/docs/reference/libraries
 
 import os

@@ -1,3 +1,5 @@
+# copied from https://github.com/WongKinYiu/yolov7/blob/main/models/yolo.py
+
 import argparse
 import logging
 import sys

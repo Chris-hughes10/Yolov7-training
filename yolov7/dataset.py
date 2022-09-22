@@ -20,7 +20,7 @@ def create_base_transforms(target_image_size):
     )
 
 
-def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=False, extra_transforms=False):
+def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=False):
     transforms = [
         A.LongestMaxSize(max(image_size)),
         A.PadIfNeeded(

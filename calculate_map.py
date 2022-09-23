@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import torch
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
@@ -143,12 +144,65 @@ class COCOMeanAveragePrecision:
 
 class CalculateMetricsCallback(TrainerCallback):
 
-    def __init__(self, targets_df, eval_image_ids):
+    def __init__(self):
         self.evaulator = COCOMeanAveragePrecision(0.3)
-        self.targets_df = targets_df
-        self.image_ids = eval_image_ids
+        self.ground_truths = []
+        self.eval_predictions = []
+        self.image_ids = set()
+
+    def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
+        predictions = batch_output['predictions']
+        targets = batch_output['targets']
+
+        self.update(predictions, targets)
+
+    def remove_seen(self, labels):
+        image_ids = labels[:, -1].tolist()
+
+        # remove any image_idx that has already been seen
+        # this can arise from distributed training where batch size does not evenly divide dataset
+        seen_idx_mask = torch.as_tensor(
+            [False if idx not in self.image_ids else True for idx in image_ids]
+        )
+
+        if seen_idx_mask.all():
+            # no update required as all ids already seen this pass
+            return []
+        elif seen_idx_mask.any():  # at least one True
+            # remove predictions for images already seen this pass
+            labels = labels[~seen_idx_mask]
+
+        return labels
+
+    def update(self, predictions, targets):
+        filtered_predictions = self.remove_seen(predictions)
+        filtered_targets = self.remove_seen(targets)
+
+        if len(filtered_targets) > 0:
+            self.ground_truths.extend(filtered_targets.tolist())
+            updated_ids = filtered_targets[:, -1].unique().tolist()
+            self.image_ids.update(updated_ids)
+
+        if len(filtered_predictions) > 0:
+            self.eval_predictions.extend(filtered_predictions.tolist())
+            updated_ids = filtered_predictions[:, -1].unique().tolist()
+            self.image_ids.update(updated_ids)
+
+
+    def reset(self):
+        self.image_ids = set()
+        self.ground_truths = []
+        self.eval_predictions = []
+
 
     def on_eval_epoch_end(self, trainer, **kwargs):
-        map = self.evaulator(targets_df=trainer.targets_df, preds_df=trainer.preds_df, image_ids=self.image_ids)
+        preds_df = pd.DataFrame(torch.as_tensor(self.eval_predictions),
+                                columns=['xmin', 'ymin', 'xmax', 'ymax', 'score', 'class_id', 'image_id'])
+        targets_df = pd.DataFrame(torch.as_tensor(self.ground_truths),
+                                  columns=['xmin', 'ymin', 'xmax', 'ymax', 'class_id', 'image_id'])
+
+        map = self.evaulator(targets_df=targets_df, preds_df=preds_df, image_ids=self.image_ids)
 
         trainer.run_history.update_metric(f"map", map)
+
+        self.reset()

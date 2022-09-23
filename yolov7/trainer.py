@@ -4,6 +4,7 @@ from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 
 import pandas as pd
+from torch import Tensor
 
 from yolov7.model_factory import process_yolov7_outputs
 
@@ -16,6 +17,16 @@ class DisableAugmentationCallback(TrainerCallback):
         if trainer.run_history.current_epoch == trainer.run_config.num_epochs - self.no_aug_epochs:
             trainer.print("Disabling Mosaic Augmentation")
             trainer.train_dataset.ds.disable()
+
+def remove_padding(padded_tensor: Tensor, pad_value):
+    padding_mask = padded_tensor == pad_value
+
+    if padding_mask.ndim > 1:
+        padding_mask = torch.all(padding_mask, dim=-1)
+
+    result =  padded_tensor[~padding_mask]
+
+    return result
 
 class Yolov7Trainer(Trainer):
     YOLO7_PADDING_VALUE = -2.0
@@ -58,10 +69,6 @@ class Yolov7Trainer(Trainer):
 
     def eval_epoch_start(self):
         super(Yolov7Trainer, self).eval_epoch_start()
-        self.eval_predictions = []
-        self.eval_targets = []
-        self.idxs_seen = set()
-        self.preds_df = None
 
     def calculate_eval_batch_loss(self, batch) -> dict:
         with torch.no_grad():
@@ -82,85 +89,30 @@ class Yolov7Trainer(Trainer):
 
             preds = nms_preds
 
-            # remove any image_idx that has already been seen
-            # this can arise from distributed training where batch size does not evenly divide dataset
-            seen_idx_mask = torch.as_tensor(
-                [False if idx not in self.idxs_seen else True for idx in image_idxs.tolist()]
-            )
-            
-            if seen_idx_mask.all():
-                # handle where all have been seen
-                image_idxs = torch.as_tensor([int(self.YOLO7_PADDING_VALUE)], device=self.device)
-                preds = []
-                labels = []
-            
-            elif seen_idx_mask.any(): # at least one True
-                unseen_idxs_indices = (~seen_idx_mask).nonzero().tolist()[0]
-                image_idxs = image_idxs[unseen_idxs_indices]
-                preds = [preds[i] for i in unseen_idxs_indices]
+        gathered_predictions = self.get_formatted_preds(image_idxs, preds).detach().cpu()
+        stacked_targets = self.get_formatted_targets(labels, image_idxs, images)
 
-                if not image_idxs:
-                    image_idxs = torch.as_tensor(
-                        [int(self.YOLO7_PADDING_VALUE)], device=self.device
-                    ).repeat(batch[2].shape[0])
-
-            gathered_predictions = self.get_formatted_preds(image_idxs, preds)
-            self.eval_predictions.extend(gathered_predictions.detach().cpu().tolist())
-
-        formatted_targets = []
-        for im_i, (image_idx, seen_idx) in enumerate(zip(image_idxs, seen_idx_mask)):
-            if not seen_idx:
-                image_labels = labels[labels[:, 0] == im_i][:, 1:].clone()
-
-                # denormalize
-                image_labels[:, [1, 3]] = image_labels[:, [1, 3]] * images.shape[-2]
-                image_labels[:, [2, 4]] = image_labels[:, [2, 4]] * images.shape[-1]
-                xyxy_labels = torchvision.ops.box_convert(image_labels[:, 1:], 'cxcywh', 'xyxy')
-                formatted_targets.append(
-                    torch.cat(
-                        (
-                            xyxy_labels,
-                            image_labels[:, 0][None].T,
-                            image_idx.repeat(image_labels.shape[0])[None].T,
-                        ),
-                        1,
-                    )
-                )
-
-        if not formatted_targets:
-            stacked_targets = torch.tensor([self.YOLO7_PADDING_VALUE] * 6, device=self.device)[None]
-        else:
-            stacked_targets = torch.vstack(formatted_targets)
-
-        padded_stacked_targets = self._accelerator.pad_across_processes(
-            stacked_targets, pad_index=self.YOLO7_PADDING_VALUE
-        )
-
-        gathered_targets = self.gather(padded_stacked_targets)
-
-        if len(gathered_targets) > 0:
-            gathered_targets = gathered_targets[
-                gathered_targets[:, 0] != self.YOLO7_PADDING_VALUE
-                ]
-        self._accelerator.wait_for_everyone()
-        self.eval_targets.extend(gathered_targets.detach().cpu().tolist())
-        
-        padded_indices = self._accelerator.pad_across_processes(
-            image_idxs, pad_index=int(self.YOLO7_PADDING_VALUE)
-        )
-        gathered_indices = self.gather(padded_indices)
-
-        gathered_indices = gathered_indices[
-            gathered_indices != int(self.YOLO7_PADDING_VALUE)
-        ].tolist()
-
-        self.idxs_seen.update(gathered_indices)
+        gathered_targets = self.gather(stacked_targets, padding_value=self.YOLO7_PADDING_VALUE).detach().cpu()
 
         return {
             "loss": val_loss,
             "model_outputs": model_outputs,
+            "predictions": gathered_predictions,
+            "targets": gathered_targets,
             "batch_size": images.size(0),
         }
+
+    def gather(self, tensor, padding_value=None):
+        if padding_value is not None:
+            pad_value = torch.as_tensor(padding_value).to(dtype=tensor.dtype).item()  # ensure correct type
+            tensor = self._accelerator.pad_across_processes(tensor, pad_index=pad_value)
+
+        gathered_tensor = self._accelerator.gather(tensor)
+
+        if padding_value is not None:
+            gathered_tensor = remove_padding(gathered_tensor, padding_value)
+
+        return gathered_tensor
 
     def get_formatted_preds(self, image_idxs, preds):
         formatted_preds = []
@@ -177,34 +129,41 @@ class Yolov7Trainer(Trainer):
             )
 
         if not formatted_preds:
+            # create placeholder so that it can be gathered across processes
             stacked_preds = torch.tensor([self.YOLO7_PADDING_VALUE] * 7, device=self.device)[None]
         else:
             stacked_preds = torch.vstack(formatted_preds)
 
-        padded_stacked_preds = self._accelerator.pad_across_processes(
-            stacked_preds, pad_index=self.YOLO7_PADDING_VALUE
-        )
-
-        gathered_predictions = self.gather(padded_stacked_preds)
-
-        if len(gathered_predictions) > 0:
-            gathered_predictions = gathered_predictions[
-                gathered_predictions[:, 0] != self.YOLO7_PADDING_VALUE
-                ]
-        self._accelerator.wait_for_everyone()
+        gathered_predictions = self.gather(stacked_preds, padding_value=self.YOLO7_PADDING_VALUE)
 
         return gathered_predictions
 
-    def eval_epoch_end(self):
+    def get_formatted_targets(self, labels, image_idxs, images):
+        formatted_targets = []
+        for im_i, image_idx in enumerate(image_idxs):
+            image_labels = labels[labels[:, 0] == im_i][:, 1:].clone()
 
-        preds_df = pd.DataFrame(torch.as_tensor(self.eval_predictions),
-                                columns=['xmin', 'ymin', 'xmax', 'ymax', 'score', 'class_id', 'image_idx'])
-        preds_df['image_id'] = preds_df.image_idx.map(self.eval_image_idx_to_id_lookup)
-        self.preds_df = preds_df
+            # denormalize
+            image_labels[:, [1, 3]] = image_labels[:, [1, 3]] * images.shape[-2]
+            image_labels[:, [2, 4]] = image_labels[:, [2, 4]] * images.shape[-1]
+            xyxy_labels = torchvision.ops.box_convert(image_labels[:, 1:], 'cxcywh', 'xyxy')
+            formatted_targets.append(
+                # cx, cy, w, h, class_id, image_idx
+                torch.cat(
+                    (
+                        xyxy_labels,
+                        image_labels[:, 0][None].T,
+                        image_idx.repeat(image_labels.shape[0])[None].T,
+                    ),
+                    1,
+                )
+            )
 
-        targets_df = pd.DataFrame(torch.as_tensor(self.eval_targets),
-                                  columns=['xmin', 'ymin', 'xmax', 'ymax', 'class_id', 'image_idx'])
-        targets_df['image_id'] = targets_df.image_idx.map(self.eval_image_idx_to_id_lookup)
-        # targets_df['class_id'] = 2
-        self.targets_df = targets_df
+        if not formatted_targets:
+            # create placeholder so that it can be gathered across processes
+            stacked_targets = torch.tensor([self.YOLO7_PADDING_VALUE] * 6, device=self.device)[None]
+        else:
+            stacked_targets = torch.vstack(formatted_targets)
+
+        return stacked_targets
 

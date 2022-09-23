@@ -2,29 +2,29 @@ import os
 from pathlib import Path
 import random
 
-import timm.optim
 import torch
+from pytorch_accelerated import notebook_launcher
 from pytorch_accelerated.callbacks import get_default_callbacks
 from pytorch_accelerated.schedulers import CosineLrScheduler
 from torch import nn
+from torch.utils.data import Subset
 
-from custom.data import DatasetAdaptor, load_cars_df
-from custom.datasets import MosaicMixupDataset
-from custom.calculate_map import CalculateMetricsCallback
-from custom.yolo7_utils.dataset import create_base_transforms, Yolov7Dataset, create_yolov7_transforms, \
+from data import DatasetAdaptor, load_cars_df
+from datasets import MosaicMixupDataset
+from calculate_map import CalculateMetricsCallback
+from yolov7.dataset import create_base_transforms, Yolov7Dataset, create_yolov7_transforms, \
     yolov7_collate_fn
-from custom.yolo7_utils.loss import create_loss
-from custom.yolo7_utils.model import create_yolov7_model
-from custom.yolo7_utils.trainer import Yolov7Trainer
-from custom_train import DisableAugmentationCallback
+from yolov7.loss_factory import create_loss
+from yolov7.model_factory import create_yolov7_model
+from yolov7.trainer import Yolov7Trainer
 
 
 def main():
-    data_path = '/home/chris/notebooks/yolov7/cars/data'
+    data_path = '/home/chris/Downloads/data'
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
-    yolov7_config_path = Path('/home/chris/notebooks/yolov7/custom/yolo7-cfg')
+    yolov7_config_path = Path('model_configs')
 
     train_df, valid_df, lookups= load_cars_df(annotations_file_path, images_path)
 
@@ -89,9 +89,7 @@ def main():
         eval_loss_func=create_loss(model, ota_loss=False),
         eval_image_idx_to_id_lookup=eval_ds.image_idx_to_image_id,
         callbacks=[
-            DisableAugmentationCallback(no_aug_epochs=cooldown_epochs),
-
-            CalculateMetricsCallback(targets_df=valid_df.query('has_annotation == True'), eval_image_ids=set(valid_df.image_id.unique())),
+            CalculateMetricsCallback(),
             *get_default_callbacks(progress_bar=True),
         ],
     )
@@ -112,14 +110,14 @@ def main():
         eval_dataset=eval_yds,
         per_device_batch_size=batch_size,
         create_scheduler_fn=CosineLrScheduler.create_scheduler_fn(
-            num_warmup_epochs=0, num_cooldown_epochs=cooldown_epochs
+            num_warmup_epochs=5, num_cooldown_epochs=cooldown_epochs
         ),
-        # train_dataloader_kwargs=train_dl_kwargs,
-        # eval_dataloader_kwargs={"pin_memory": False, "num_workers": 0},
+        train_dataloader_kwargs={'num_workers': 0},
+        eval_dataloader_kwargs={"pin_memory": False, "num_workers": 0},
         collate_fn=yolov7_collate_fn,
         gradient_accumulation_steps=num_accumulate_steps,
     )
 
 if __name__ == '__main__':
     os.environ['mixed_precision'] = 'fp16'
-    main()
+    notebook_launcher(main, num_processes=2)

@@ -52,6 +52,7 @@ def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
             ]  # conf = obj_conf * cls_conf
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
+        # TODO replace this method
         box = xywh2xyxy(detections_for_image[:, :4])
 
         # best class only

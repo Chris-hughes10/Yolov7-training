@@ -3,6 +3,7 @@ from tqdm import tqdm
 from scipy.cluster.vq import kmeans
 import numpy as np
 
+
 def calculate_anchors(
     current_anchors,
     image_sizes,
@@ -15,7 +16,9 @@ def calculate_anchors(
     # image sizes array of [w, h] , either np.array([[w, h]]) or per image
 
     # find target image sizes given longest side
-    target_image_sizes = target_image_size * image_sizes / image_sizes.max(1, keepdims=True)
+    target_image_sizes = (
+        target_image_size * image_sizes / image_sizes.max(1, keepdims=True)
+    )
 
     # find wh of boxes for target size
     wh = target_image_sizes * normalized_wh
@@ -49,18 +52,26 @@ def calculate_anchors(
             0.9,
             0.1,
         )  # fitness, generations, mutation prob, sigma
-        pbar = tqdm(range(gen), desc=f"Evolving anchors with Genetic Algorithm:")  # progress bar
+        pbar = tqdm(
+            range(gen), desc=f"Evolving anchors with Genetic Algorithm:"
+        )  # progress bar
         for _ in pbar:
             v = np.ones(sh)
             while (v == 1).all():  # mutate until a change occurs (prevent duplicates)
                 v = (
-                    (np.random.random(sh) < mp) * np.random.random() * np.random.randn(*sh) * s + 1
+                    (np.random.random(sh) < mp)
+                    * np.random.random()
+                    * np.random.randn(*sh)
+                    * s
+                    + 1
                 ).clip(0.3, 3.0)
             kg = (proposed_anchors.copy() * v).clip(min=2.0)
             fg = anchor_fitness(kg, wh, 1 / anchor_thr)
             if fg > f:
                 f, proposed_anchors = fg, kg.copy()
-                pbar.desc = f"Evolving anchors with Genetic Algorithm: fitness = {f:.4f}"
+                pbar.desc = (
+                    f"Evolving anchors with Genetic Algorithm: fitness = {f:.4f}"
+                )
                 if verbose:
                     print_results(
                         proposed_anchors,
@@ -75,10 +86,16 @@ def calculate_anchors(
             print("New anchors better")
             current_anchors = proposed_anchors
             print_results(
-                current_anchors, wh, num_anchors, 1 / anchor_thr, img_size=target_image_size
+                current_anchors,
+                wh,
+                num_anchors,
+                1 / anchor_thr,
+                img_size=target_image_size,
             )
         else:
-            print(f"Original anchors better than new anchors. Proceeding with original anchors.")
+            print(
+                f"Original anchors better than new anchors. Proceeding with original anchors."
+            )
 
     return current_anchors
 
@@ -113,14 +130,15 @@ def update_model_anchors_inplace(model, anchors):
     check_anchor_order(detect_module)
 
 
-
 def metric(anchors, wh, anchor_thr=4):  # compute metric
     # calculates the ratio of the height and width of each bounding box to each anchor template
     r = wh[:, None] / anchors[None]
     # find min aspect ratio for each bbox
     ratio_metric = torch.min(r, 1.0 / r).min(2)[0]
     best_ratio = ratio_metric.max(1)[0]  # best_x
-    aat = (ratio_metric > 1.0 / anchor_thr).float().sum(1).mean()  # anchors above threshold
+    aat = (
+        (ratio_metric > 1.0 / anchor_thr).float().sum(1).mean()
+    )  # anchors above threshold
     bpr = (best_ratio > 1.0 / anchor_thr).float().mean()  # best possible recall
     return bpr, aat, ratio_metric, best_ratio
 
@@ -146,5 +164,3 @@ def print_results(k, wh, n, anchor_thr=0.25, img_size=1280):
             "%i,%i" % (round(x[0]), round(x[1])), end=",  " if i < len(k) - 1 else "\n"
         )  # use in *.cfg
     return k
-
-

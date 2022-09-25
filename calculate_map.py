@@ -84,7 +84,9 @@ class COCOMeanAveragePrecision:
         return targets, preds
 
     @staticmethod
-    def _format_box_df_for_cocotools(box_df: pd.DataFrame, is_preds: bool = False) -> List[Dict]:
+    def _format_box_df_for_cocotools(
+        box_df: pd.DataFrame, is_preds: bool = False
+    ) -> List[Dict]:
         # `box_df` is either a `targets_df` or a `preds_df`
         box_df = box_df.copy()  # Ensure no side effects
         box_df[BOX_WIDTH_COL] = box_df[XMAX_COL] - box_df[XMIN_COL]
@@ -117,7 +119,9 @@ class COCOMeanAveragePrecision:
         coco_targets.createIndex()
         coco_preds = coco_targets.loadRes(preds)
         coco_eval = COCOeval(cocoGt=coco_targets, cocoDt=coco_preds, iouType="bbox")
-        coco_eval.params.iouThrs = np.array([self.foreground_threshold])  # Single IoU threshold
+        coco_eval.params.iouThrs = np.array(
+            [self.foreground_threshold]
+        )  # Single IoU threshold
         coco_eval.params.areaRng = np.array([self.AREA_RANGE])
         coco_eval.params.areaRngLbl = [self.AREA_RANGE_LABEL]
         # Single maximum number of predictions to account for
@@ -128,7 +132,9 @@ class COCOMeanAveragePrecision:
         """Actual computation of mAP; extracted from non-flexible `COCOeval.summarize` method."""
         p = coco_eval.params
 
-        aind = [i for i, aRng in enumerate(p.areaRngLbl) if aRng == self.AREA_RANGE_LABEL]
+        aind = [
+            i for i, aRng in enumerate(p.areaRngLbl) if aRng == self.AREA_RANGE_LABEL
+        ]
         mind = [i for i, mDet in enumerate(p.maxDets) if mDet == self.MAX_PREDS]
         # dimension of precision: [TxRxKxAxM]
         s = coco_eval.eval["precision"]
@@ -142,8 +148,8 @@ class COCOMeanAveragePrecision:
             mean_s = np.mean(s[s > -1])
         return mean_s
 
-class CalculateMetricsCallback(TrainerCallback):
 
+class CalculateMetricsCallback(TrainerCallback):
     def __init__(self):
         self.evaulator = COCOMeanAveragePrecision(0.3)
         self.ground_truths = []
@@ -151,8 +157,8 @@ class CalculateMetricsCallback(TrainerCallback):
         self.image_ids = set()
 
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
-        predictions = batch_output['predictions']
-        targets = batch_output['targets']
+        predictions = batch_output["predictions"]
+        targets = batch_output["targets"]
 
         self.update(predictions, targets)
 
@@ -188,20 +194,24 @@ class CalculateMetricsCallback(TrainerCallback):
             updated_ids = filtered_predictions[:, -1].unique().tolist()
             self.image_ids.update(updated_ids)
 
-
     def reset(self):
         self.image_ids = set()
         self.ground_truths = []
         self.eval_predictions = []
 
-
     def on_eval_epoch_end(self, trainer, **kwargs):
-        preds_df = pd.DataFrame(torch.as_tensor(self.eval_predictions),
-                                columns=['xmin', 'ymin', 'xmax', 'ymax', 'score', 'class_id', 'image_id'])
-        targets_df = pd.DataFrame(torch.as_tensor(self.ground_truths),
-                                  columns=['xmin', 'ymin', 'xmax', 'ymax', 'class_id', 'image_id'])
+        preds_df = pd.DataFrame(
+            torch.as_tensor(self.eval_predictions),
+            columns=["xmin", "ymin", "xmax", "ymax", "score", "class_id", "image_id"],
+        )
+        targets_df = pd.DataFrame(
+            torch.as_tensor(self.ground_truths),
+            columns=["xmin", "ymin", "xmax", "ymax", "class_id", "image_id"],
+        )
 
-        map = self.evaulator(targets_df=targets_df, preds_df=preds_df, image_ids=self.image_ids)
+        map = self.evaulator(
+            targets_df=targets_df, preds_df=preds_df, image_ids=self.image_ids
+        )
 
         trainer.run_history.update_metric(f"map", map)
 

@@ -1,7 +1,7 @@
 from yolov7.migrated.loss import ComputeLossAuxOTA, ComputeLossOTA, ComputeLoss
 
 
-def create_loss(
+def create_yolov7_loss(
     model,
     image_size=640,
     box_loss_weight=0.05,
@@ -14,7 +14,9 @@ def create_loss(
 
     nl = model.model[-1].nl  # number of detection layers (used for scaling hyp['obj'])
     hyp["box"] = box_loss_weight * 3.0 / nl  # scale to layers
-    hyp["cls"] = cls_loss_weight * model.nc / 80.0 * 3.0 / nl  # scale to classes and layers
+    hyp["cls"] = (
+        cls_loss_weight * model.nc / 80.0 * 3.0 / nl
+    )  # scale to classes and layers
     hyp["obj"] = (
         obj_loss_weight * (image_size / 640) ** 2 * 3.0 / nl
     )  # scale to image size and layers

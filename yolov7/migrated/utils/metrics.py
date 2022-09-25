@@ -134,7 +134,11 @@ class ConfusionMatrix:
 
         x = torch.where(iou > self.iou_thres)
         if x[0].shape[0]:
-            matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
+            matches = (
+                torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1)
+                .cpu()
+                .numpy()
+            )
             if x[0].shape[0] > 1:
                 matches = matches[matches[:, 2].argsort()[::-1]]
                 matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
@@ -164,12 +168,16 @@ class ConfusionMatrix:
         try:
             import seaborn as sn
 
-            array = self.matrix / (self.matrix.sum(0).reshape(1, self.nc + 1) + 1e-6)  # normalize
+            array = self.matrix / (
+                self.matrix.sum(0).reshape(1, self.nc + 1) + 1e-6
+            )  # normalize
             array[array < 0.005] = np.nan  # don't annotate (would appear as 0.00)
 
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
             sn.set(font_scale=1.0 if self.nc < 50 else 0.8)  # for label size
-            labels = (0 < len(names) < 99) and len(names) == self.nc  # apply names to ticklabels
+            labels = (0 < len(names) < 99) and len(
+                names
+            ) == self.nc  # apply names to ticklabels
             sn.heatmap(
                 array,
                 annot=self.nc < 30,
@@ -222,7 +230,9 @@ def plot_pr_curve(px, py, ap, save_dir="pr_curve.png", names=()):
     fig.savefig(Path(save_dir), dpi=250)
 
 
-def plot_mc_curve(px, py, save_dir="mc_curve.png", names=(), xlabel="Confidence", ylabel="Metric"):
+def plot_mc_curve(
+    px, py, save_dir="mc_curve.png", names=(), xlabel="Confidence", ylabel="Metric"
+):
     # Metric-confidence curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
 
@@ -234,7 +244,11 @@ def plot_mc_curve(px, py, save_dir="mc_curve.png", names=(), xlabel="Confidence"
 
     y = py.mean(0)
     ax.plot(
-        px, y, linewidth=3, color="blue", label=f"all classes {y.max():.2f} at {px[y.argmax()]:.3f}"
+        px,
+        y,
+        linewidth=3,
+        color="blue",
+        label=f"all classes {y.max():.2f} at {px[y.argmax()]:.3f}",
     )
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)

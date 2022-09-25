@@ -103,7 +103,13 @@ class ReOrg(nn.Module):
 
     def forward(self, x):  # x(b,c,w,h) -> y(b,4c,w/2,h/2)
         return torch.cat(
-            [x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1
+            [
+                x[..., ::2, ::2],
+                x[..., 1::2, ::2],
+                x[..., ::2, 1::2],
+                x[..., 1::2, 1::2],
+            ],
+            1,
         )
 
 
@@ -159,7 +165,9 @@ class Conv(nn.Module):
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
         self.bn = nn.BatchNorm2d(c2)
         self.act = (
-            nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+            nn.SiLU()
+            if act is True
+            else (act if isinstance(act, nn.Module) else nn.Identity())
         )
 
     def forward(self, x):
@@ -228,7 +236,9 @@ def DWConv(c1, c2, k=1, s=1, act=True):
 
 class GhostConv(nn.Module):
     # Ghost Convolution https://github.com/huawei-noah/ghostnet
-    def __init__(self, c1, c2, k=1, s=1, g=1, act=True):  # ch_in, ch_out, kernel, stride, groups
+    def __init__(
+        self, c1, c2, k=1, s=1, g=1, act=True
+    ):  # ch_in, ch_out, kernel, stride, groups
         super(GhostConv, self).__init__()
         c_ = c2 // 2  # hidden channels
         self.cv1 = Conv(c1, c_, k, s, None, g, act)
@@ -278,7 +288,9 @@ class SPP(nn.Module):
         c_ = c1 // 2  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_ * (len(k) + 1), c2, 1, 1)
-        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
+        self.m = nn.ModuleList(
+            [nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k]
+        )
 
     def forward(self, x):
         x = self.cv1(x)
@@ -313,7 +325,11 @@ class Res(nn.Module):
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
-        return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
+        return (
+            x + self.cv3(self.cv2(self.cv1(x)))
+            if self.add
+            else self.cv3(self.cv2(self.cv1(x)))
+        )
 
 
 class ResX(Res):
@@ -336,7 +352,9 @@ class Ghost(nn.Module):
             GhostConv(c_, c2, 1, 1, act=False),
         )  # pw-linear
         self.shortcut = (
-            nn.Sequential(DWConv(c1, c1, k, s, act=False), Conv(c1, c2, 1, 1, act=False))
+            nn.Sequential(
+                DWConv(c1, c1, k, s, act=False), Conv(c1, c2, 1, 1, act=False)
+            )
             if s == 2
             else nn.Identity()
         )
@@ -360,7 +378,9 @@ class SPPCSPC(nn.Module):
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(c_, c_, 3, 1)
         self.cv4 = Conv(c_, c_, 1, 1)
-        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
+        self.m = nn.ModuleList(
+            [nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k]
+        )
         self.cv5 = Conv(4 * c_, c_, 1, 1)
         self.cv6 = Conv(c_, c_, 3, 1)
         self.cv7 = Conv(2 * c_, c2, 1, 1)
@@ -409,7 +429,9 @@ class BottleneckCSPA(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1, 1)
-        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
     def forward(self, x):
         y1 = self.m(self.cv1(x))
@@ -427,7 +449,9 @@ class BottleneckCSPB(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1, 1)
-        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
     def forward(self, x):
         x1 = self.cv1(x)
@@ -447,7 +471,9 @@ class BottleneckCSPC(nn.Module):
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(c_, c_, 1, 1)
         self.cv4 = Conv(2 * c_, c2, 1, 1)
-        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
     def forward(self, x):
         y1 = self.cv3(self.m(self.cv1(x)))
@@ -601,14 +627,20 @@ class RepConv(nn.Module):
         padding_11 = autopad(k, p) - k // 2
 
         self.act = (
-            nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+            nn.SiLU()
+            if act is True
+            else (act if isinstance(act, nn.Module) else nn.Identity())
         )
 
         if deploy:
-            self.rbr_reparam = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=True)
+            self.rbr_reparam = nn.Conv2d(
+                c1, c2, k, s, autopad(k, p), groups=g, bias=True
+            )
 
         else:
-            self.rbr_identity = nn.BatchNorm2d(num_features=c1) if c2 == c1 and s == 1 else None
+            self.rbr_identity = (
+                nn.BatchNorm2d(num_features=c1) if c2 == c1 and s == 1 else None
+            )
 
             self.rbr_dense = nn.Sequential(
                 nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False),
@@ -660,7 +692,9 @@ class RepConv(nn.Module):
             assert isinstance(branch, nn.BatchNorm2d)
             if not hasattr(self, "id_tensor"):
                 input_dim = self.in_channels // self.groups
-                kernel_value = np.zeros((self.in_channels, input_dim, 3, 3), dtype=np.float32)
+                kernel_value = np.zeros(
+                    (self.in_channels, input_dim, 3, 3), dtype=np.float32
+                )
                 for i in range(self.in_channels):
                     kernel_value[i, i % input_dim, 1, 1] = 1
                 self.id_tensor = torch.from_numpy(kernel_value).to(branch.weight.device)
@@ -734,11 +768,15 @@ class RepConv(nn.Module):
             identity_conv_1x1.weight.data = identity_conv_1x1.weight.data.to(
                 self.rbr_1x1.weight.data.device
             )
-            identity_conv_1x1.weight.data = identity_conv_1x1.weight.data.squeeze().squeeze()
+            identity_conv_1x1.weight.data = (
+                identity_conv_1x1.weight.data.squeeze().squeeze()
+            )
             # print(f" identity_conv_1x1.weight = {identity_conv_1x1.weight.shape}")
             identity_conv_1x1.weight.data.fill_(0.0)
             identity_conv_1x1.weight.data.fill_diagonal_(1.0)
-            identity_conv_1x1.weight.data = identity_conv_1x1.weight.data.unsqueeze(2).unsqueeze(3)
+            identity_conv_1x1.weight.data = identity_conv_1x1.weight.data.unsqueeze(
+                2
+            ).unsqueeze(3)
             # print(f" identity_conv_1x1.weight = {identity_conv_1x1.weight.shape}")
 
             identity_conv_1x1 = self.fuse_conv_bn(identity_conv_1x1, self.rbr_identity)
@@ -749,7 +787,9 @@ class RepConv(nn.Module):
         else:
             # print(f"fuse: rbr_identity != BatchNorm2d, rbr_identity = {self.rbr_identity}")
             bias_identity_expanded = torch.nn.Parameter(torch.zeros_like(rbr_1x1_bias))
-            weight_identity_expanded = torch.nn.Parameter(torch.zeros_like(weight_1x1_expanded))
+            weight_identity_expanded = torch.nn.Parameter(
+                torch.zeros_like(weight_1x1_expanded)
+            )
 
         # print(f"self.rbr_1x1.weight = {self.rbr_1x1.weight.shape}, ")
         # print(f"weight_1x1_expanded = {weight_1x1_expanded.shape}, ")
@@ -795,7 +835,9 @@ class RepBottleneckCSPA(BottleneckCSPA):
     ):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
 
 class RepBottleneckCSPB(BottleneckCSPB):
@@ -805,7 +847,9 @@ class RepBottleneckCSPB(BottleneckCSPB):
     ):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2)  # hidden channels
-        self.m = nn.Sequential(*[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
 
 class RepBottleneckCSPC(BottleneckCSPC):
@@ -815,7 +859,9 @@ class RepBottleneckCSPC(BottleneckCSPC):
     ):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(
+            *[RepBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]
+        )
 
 
 class RepRes(Res):
@@ -929,7 +975,9 @@ class TransformerBlock(nn.Module):
         if c1 != c2:
             self.conv = Conv(c1, c2)
         self.linear = nn.Linear(c2, c2)  # learnable position embedding
-        self.tr = nn.Sequential(*[TransformerLayer(c2, num_heads) for _ in range(num_layers)])
+        self.tr = nn.Sequential(
+            *[TransformerLayer(c2, num_heads) for _ in range(num_layers)]
+        )
         self.c2 = c2
 
     def forward(self, x):
@@ -968,7 +1016,13 @@ class Focus(nn.Module):
     def forward(self, x):  # x(b,c,w,h) -> y(b,4c,w/2,h/2)
         return self.conv(
             torch.cat(
-                [x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1
+                [
+                    x[..., ::2, ::2],
+                    x[..., 1::2, ::2],
+                    x[..., ::2, 1::2],
+                    x[..., 1::2, 1::2],
+                ],
+                1,
             )
         )
         # return self.conv(self.contract(x))
@@ -997,7 +1051,12 @@ class Contract(nn.Module):
         self.gain = gain
 
     def forward(self, x):
-        N, C, H, W = x.size()  # assert (H / s == 0) and (W / s == 0), 'Indivisible gain'
+        (
+            N,
+            C,
+            H,
+            W,
+        ) = x.size()  # assert (H / s == 0) and (W / s == 0), 'Indivisible gain'
         s = self.gain
         x = x.view(N, C, H // s, s, W // s, s)  # x(1,64,40,2,40,2)
         x = x.permute(0, 3, 5, 1, 2, 4).contiguous()  # x(1,2,2,64,40,40)
@@ -1013,9 +1072,9 @@ class Expand(nn.Module):
     def forward(self, x):
         N, C, H, W = x.size()  # assert C / s ** 2 == 0, 'Indivisible gain'
         s = self.gain
-        x = x.view(N, s, s, C // s ** 2, H, W)  # x(1,2,2,16,80,80)
+        x = x.view(N, s, s, C // s**2, H, W)  # x(1,2,2,16,80,80)
         x = x.permute(0, 3, 4, 1, 5, 2).contiguous()  # x(1,16,80,2,80,2)
-        return x.view(N, C // s ** 2, H * s, W * s)  # x(1,16,160,160)
+        return x.view(N, C // s**2, H * s, W * s)  # x(1,16,160,160)
 
 
 class NMS(nn.Module):
@@ -1064,7 +1123,9 @@ class autoShape(nn.Module):
         p = next(self.model.parameters())  # for device and type
         if isinstance(imgs, torch.Tensor):  # torch
             with amp.autocast(enabled=p.device.type != "cpu"):
-                return self.model(imgs.to(p.device).type_as(p), augment, profile)  # inference
+                return self.model(
+                    imgs.to(p.device).type_as(p), augment, profile
+                )  # inference
 
         # Pre-process
         n, imgs = (
@@ -1077,7 +1138,9 @@ class autoShape(nn.Module):
                 im, f = (
                     np.asarray(
                         Image.open(
-                            requests.get(im, stream=True).raw if im.startswith("http") else im
+                            requests.get(im, stream=True).raw
+                            if im.startswith("http")
+                            else im
                         )
                     ),
                     im,
@@ -1087,14 +1150,17 @@ class autoShape(nn.Module):
             files.append(Path(f).with_suffix(".jpg").name)
             if im.shape[0] < 5:  # image in CHW
                 im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
-            im = im[:, :, :3] if im.ndim == 3 else np.tile(im[:, :, None], 3)  # enforce 3ch input
+            im = (
+                im[:, :, :3] if im.ndim == 3 else np.tile(im[:, :, None], 3)
+            )  # enforce 3ch input
             s = im.shape[:2]  # HWC
             shape0.append(s)  # image shape
             g = size / max(s)  # gain
             shape1.append([y * g for y in s])
             imgs[i] = im  # update
         shape1 = [
-            make_divisible(x, int(self.stride.max())) for x in np.stack(shape1, 0).max(0)
+            make_divisible(x, int(self.stride.max()))
+            for x in np.stack(shape1, 0).max(0)
         ]  # inference shape
         x = [letterbox(im, new_shape=shape1, auto=False)[0] for im in imgs]  # pad
         x = np.stack(x, 0) if n > 1 else x[0][None]  # stack
@@ -1124,7 +1190,8 @@ class Detections:
         super(Detections, self).__init__()
         d = pred[0].device  # device
         gn = [
-            torch.tensor([*[im.shape[i] for i in [1, 0, 1, 0]], 1.0, 1.0], device=d) for im in imgs
+            torch.tensor([*[im.shape[i] for i in [1, 0, 1, 0]], 1.0, 1.0], device=d)
+            for im in imgs
         ]  # normalizations
         self.imgs = imgs  # list of images as numpy arrays
         self.pred = pred  # list of tensors pred[0] = (xyxy, conf, cls)
@@ -1153,7 +1220,9 @@ class Detections:
                         label = f"{self.names[int(cls)]} {conf:.2f}"
                         plot_one_box(box, img, label=label, color=colors[int(cls) % 10])
             img = (
-                Image.fromarray(img.astype(np.uint8)) if isinstance(img, np.ndarray) else img
+                Image.fromarray(img.astype(np.uint8))
+                if isinstance(img, np.ndarray)
+                else img
             )  # from np
             if pprint:
                 print(str.rstrip(", "))
@@ -1163,7 +1232,8 @@ class Detections:
                 f = self.files[i]
                 img.save(Path(save_dir) / f)  # save
                 print(
-                    f"{'Saved' * (i == 0)} {f}", end="," if i < self.n - 1 else f" to {save_dir}\n"
+                    f"{'Saved' * (i == 0)} {f}",
+                    end="," if i < self.n - 1 else f" to {save_dir}\n",
                 )
             if render:
                 self.imgs[i] = np.asarray(img)
@@ -1192,8 +1262,24 @@ class Detections:
     def pandas(self):
         # return detections as pandas DataFrames, i.e. print(results.pandas().xyxy[0])
         new = copy(self)  # return copy
-        ca = "xmin", "ymin", "xmax", "ymax", "confidence", "class", "name"  # xyxy columns
-        cb = "xcenter", "ycenter", "width", "height", "confidence", "class", "name"  # xywh columns
+        ca = (
+            "xmin",
+            "ymin",
+            "xmax",
+            "ymax",
+            "confidence",
+            "class",
+            "name",
+        )  # xyxy columns
+        cb = (
+            "xcenter",
+            "ycenter",
+            "width",
+            "height",
+            "confidence",
+            "class",
+            "name",
+        )  # xywh columns
         for k, c in zip(["xyxy", "xyxyn", "xywh", "xywhn"], [ca, ca, cb, cb]):
             a = [
                 [x[:5] + [int(x[5]), self.names[int(x[5])]] for x in x.tolist()]
@@ -1204,7 +1290,10 @@ class Detections:
 
     def tolist(self):
         # return a list of Detections objects, i.e. 'for result in results.tolist():'
-        x = [Detections([self.imgs[i]], [self.pred[i]], self.names, self.s) for i in range(self.n)]
+        x = [
+            Detections([self.imgs[i]], [self.pred[i]], self.names, self.s)
+            for i in range(self.n)
+        ]
         for d in x:
             for k in ["imgs", "pred", "xyxy", "xyxyn", "xywh", "xywhn"]:
                 setattr(d, k, getattr(d, k)[0])  # pop out of list
@@ -1225,7 +1314,9 @@ class Classify(nn.Module):
         self.flat = nn.Flatten()
 
     def forward(self, x):
-        z = torch.cat([self.aap(y) for y in (x if isinstance(x, list) else [x])], 1)  # cat if list
+        z = torch.cat(
+            [self.aap(y) for y in (x if isinstance(x, list) else [x])], 1
+        )  # cat if list
         return self.flat(self.conv(z))  # flatten to x(b,c2)
 
 
@@ -1238,7 +1329,10 @@ class Classify(nn.Module):
 def transI_fusebn(kernel, bn):
     gamma = bn.weight
     std = (bn.running_var + bn.eps).sqrt()
-    return kernel * ((gamma / std).reshape(-1, 1, 1, 1)), bn.bias - bn.running_mean * gamma / std
+    return (
+        kernel * ((gamma / std).reshape(-1, 1, 1, 1)),
+        bn.bias - bn.running_mean * gamma / std,
+    )
 
 
 class ConvBN(nn.Module):
@@ -1346,7 +1440,9 @@ class OREPA_3x3_RepConv(nn.Module):
         self.branch_counter = 0
 
         self.weight_rbr_origin = nn.Parameter(
-            torch.Tensor(out_channels, int(in_channels / self.groups), kernel_size, kernel_size)
+            torch.Tensor(
+                out_channels, int(in_channels / self.groups), kernel_size, kernel_size
+            )
         )
         nn.init.kaiming_uniform_(self.weight_rbr_origin, a=math.sqrt(1.0))
         self.branch_counter += 1
@@ -1364,7 +1460,9 @@ class OREPA_3x3_RepConv(nn.Module):
             self.weight_rbr_pfir_conv.data
             self.register_buffer(
                 "weight_rbr_avg_avg",
-                torch.ones(kernel_size, kernel_size).mul(1.0 / kernel_size / kernel_size),
+                torch.ones(kernel_size, kernel_size).mul(
+                    1.0 / kernel_size / kernel_size
+                ),
             )
             self.branch_counter += 1
 
@@ -1384,17 +1482,24 @@ class OREPA_3x3_RepConv(nn.Module):
             id_value = np.zeros((in_channels, int(in_channels / self.groups), 1, 1))
             for i in range(in_channels):
                 id_value[i, i % int(in_channels / self.groups), 0, 0] = 1
-            id_tensor = torch.from_numpy(id_value).type_as(self.weight_rbr_1x1_kxk_idconv1)
+            id_tensor = torch.from_numpy(id_value).type_as(
+                self.weight_rbr_1x1_kxk_idconv1
+            )
             self.register_buffer("id_tensor", id_tensor)
 
         else:
             self.weight_rbr_1x1_kxk_conv1 = nn.Parameter(
-                torch.Tensor(internal_channels_1x1_3x3, int(in_channels / self.groups), 1, 1)
+                torch.Tensor(
+                    internal_channels_1x1_3x3, int(in_channels / self.groups), 1, 1
+                )
             )
             nn.init.kaiming_uniform_(self.weight_rbr_1x1_kxk_conv1, a=math.sqrt(1.0))
         self.weight_rbr_1x1_kxk_conv2 = nn.Parameter(
             torch.Tensor(
-                out_channels, int(internal_channels_1x1_3x3 / self.groups), kernel_size, kernel_size
+                out_channels,
+                int(internal_channels_1x1_3x3 / self.groups),
+                kernel_size,
+                kernel_size,
             )
         )
         nn.init.kaiming_uniform_(self.weight_rbr_1x1_kxk_conv2, a=math.sqrt(1.0))
@@ -1426,13 +1531,17 @@ class OREPA_3x3_RepConv(nn.Module):
         nn.init.constant_(self.vector[4, :], 0.5)  # dws_conv
 
     def fre_init(self):
-        prior_tensor = torch.Tensor(self.out_channels, self.kernel_size, self.kernel_size)
+        prior_tensor = torch.Tensor(
+            self.out_channels, self.kernel_size, self.kernel_size
+        )
         half_fg = self.out_channels / 2
         for i in range(self.out_channels):
             for h in range(3):
                 for w in range(3):
                     if i < half_fg:
-                        prior_tensor[i, h, w] = math.cos(math.pi * (h + 0.5) * (i + 1) / 3)
+                        prior_tensor[i, h, w] = math.cos(
+                            math.pi * (h + 0.5) * (i + 1) / 3
+                        )
                     else:
                         prior_tensor[i, h, w] = math.cos(
                             math.pi * (w + 0.5) * (i + 1 - half_fg) / 3
@@ -1442,23 +1551,31 @@ class OREPA_3x3_RepConv(nn.Module):
 
     def weight_gen(self):
 
-        weight_rbr_origin = torch.einsum("oihw,o->oihw", self.weight_rbr_origin, self.vector[0, :])
+        weight_rbr_origin = torch.einsum(
+            "oihw,o->oihw", self.weight_rbr_origin, self.vector[0, :]
+        )
 
         weight_rbr_avg = torch.einsum(
             "oihw,o->oihw",
-            torch.einsum("oihw,hw->oihw", self.weight_rbr_avg_conv, self.weight_rbr_avg_avg),
+            torch.einsum(
+                "oihw,hw->oihw", self.weight_rbr_avg_conv, self.weight_rbr_avg_avg
+            ),
             self.vector[1, :],
         )
 
         weight_rbr_pfir = torch.einsum(
             "oihw,o->oihw",
-            torch.einsum("oihw,ohw->oihw", self.weight_rbr_pfir_conv, self.weight_rbr_prior),
+            torch.einsum(
+                "oihw,ohw->oihw", self.weight_rbr_pfir_conv, self.weight_rbr_prior
+            ),
             self.vector[2, :],
         )
 
         weight_rbr_1x1_kxk_conv1 = None
         if hasattr(self, "weight_rbr_1x1_kxk_idconv1"):
-            weight_rbr_1x1_kxk_conv1 = (self.weight_rbr_1x1_kxk_idconv1 + self.id_tensor).squeeze()
+            weight_rbr_1x1_kxk_conv1 = (
+                self.weight_rbr_1x1_kxk_idconv1 + self.id_tensor
+            ).squeeze()
         elif hasattr(self, "weight_rbr_1x1_kxk_conv1"):
             weight_rbr_1x1_kxk_conv1 = self.weight_rbr_1x1_kxk_conv1.squeeze()
         else:
@@ -1470,7 +1587,9 @@ class OREPA_3x3_RepConv(nn.Module):
             t, ig = weight_rbr_1x1_kxk_conv1.size()
             o, tg, h, w = weight_rbr_1x1_kxk_conv2.size()
             weight_rbr_1x1_kxk_conv1 = weight_rbr_1x1_kxk_conv1.view(g, int(t / g), ig)
-            weight_rbr_1x1_kxk_conv2 = weight_rbr_1x1_kxk_conv2.view(g, int(o / g), tg, h, w)
+            weight_rbr_1x1_kxk_conv2 = weight_rbr_1x1_kxk_conv2.view(
+                g, int(o / g), tg, h, w
+            )
             weight_rbr_1x1_kxk = torch.einsum(
                 "gti,gothw->goihw", weight_rbr_1x1_kxk_conv1, weight_rbr_1x1_kxk_conv2
             ).view(o, ig, h, w)
@@ -1479,12 +1598,16 @@ class OREPA_3x3_RepConv(nn.Module):
                 "ti,othw->oihw", weight_rbr_1x1_kxk_conv1, weight_rbr_1x1_kxk_conv2
             )
 
-        weight_rbr_1x1_kxk = torch.einsum("oihw,o->oihw", weight_rbr_1x1_kxk, self.vector[3, :])
+        weight_rbr_1x1_kxk = torch.einsum(
+            "oihw,o->oihw", weight_rbr_1x1_kxk, self.vector[3, :]
+        )
 
         weight_rbr_gconv = self.dwsc2full(
             self.weight_rbr_gconv_dw, self.weight_rbr_gconv_pw, self.in_channels
         )
-        weight_rbr_gconv = torch.einsum("oihw,o->oihw", weight_rbr_gconv, self.vector[4, :])
+        weight_rbr_gconv = torch.einsum(
+            "oihw,o->oihw", weight_rbr_gconv, self.vector[4, :]
+        )
 
         weight = (
             weight_rbr_origin
@@ -1559,7 +1682,9 @@ class RepConv_OREPA(nn.Module):
             self.nonlinearity = nonlinear
 
         if use_se:
-            self.se = SEBlock(self.out_channels, internal_neurons=self.out_channels // 16)
+            self.se = SEBlock(
+                self.out_channels, internal_neurons=self.out_channels // 16
+            )
         else:
             self.se = nn.Identity()
 
@@ -1640,19 +1765,22 @@ class RepConv_OREPA(nn.Module):
             .detach()
         )
         t1 = (
-            (self.rbr_1x1.bn.weight / ((self.rbr_1x1.bn.running_var + self.rbr_1x1.bn.eps).sqrt()))
+            (
+                self.rbr_1x1.bn.weight
+                / ((self.rbr_1x1.bn.running_var + self.rbr_1x1.bn.eps).sqrt())
+            )
             .reshape(-1, 1, 1, 1)
             .detach()
         )
 
-        l2_loss_circle = (K3 ** 2).sum() - (
+        l2_loss_circle = (K3**2).sum() - (
             K3[:, :, 1:2, 1:2] ** 2
         ).sum()  # The L2 loss of the "circle" of weights in 3x3 kernel. Use regular L2 on them.
         eq_kernel = (
             K3[:, :, 1:2, 1:2] * t3 + K1 * t1
         )  # The equivalent resultant central point of 3x3 kernel.
         l2_loss_eq_kernel = (
-            eq_kernel ** 2 / (t3 ** 2 + t1 ** 2)
+            eq_kernel**2 / (t3**2 + t1**2)
         ).sum()  # Normalize for an L2 coefficient comparable to regular L2.
         return l2_loss_eq_kernel + l2_loss_circle
 
@@ -1689,7 +1817,9 @@ class RepConv_OREPA(nn.Module):
         else:
             if not hasattr(self, "id_tensor"):
                 input_dim = self.in_channels // self.groups
-                kernel_value = np.zeros((self.in_channels, input_dim, 3, 3), dtype=np.float32)
+                kernel_value = np.zeros(
+                    (self.in_channels, input_dim, 3, 3), dtype=np.float32
+                )
                 for i in range(self.in_channels):
                     kernel_value[i, i % input_dim, 1, 1] = 1
                 self.id_tensor = torch.from_numpy(kernel_value).to(branch.weight.device)
@@ -1751,7 +1881,7 @@ class WindowAttention(nn.Module):
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         # define a parameter table of relative position bias
         self.relative_position_bias_table = nn.Parameter(
@@ -1763,8 +1893,12 @@ class WindowAttention(nn.Module):
         coords_w = torch.arange(self.window_size[1])
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
         coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords = (
+            coords_flatten[:, :, None] - coords_flatten[:, None, :]
+        )  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(
+            1, 2, 0
+        ).contiguous()  # Wh*Ww, Wh*Ww, 2
         relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
         relative_coords[:, :, 1] += self.window_size[1] - 1
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
@@ -1787,7 +1921,11 @@ class WindowAttention(nn.Module):
             .reshape(B_, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = (
+            qkv[0],
+            qkv[1],
+            qkv[2],
+        )  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)
@@ -1795,7 +1933,9 @@ class WindowAttention(nn.Module):
         relative_position_bias = self.relative_position_bias_table[
             self.relative_position_index.view(-1)
         ].view(
-            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1
+            self.window_size[0] * self.window_size[1],
+            self.window_size[0] * self.window_size[1],
+            -1,
         )  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(
             2, 0, 1
@@ -1804,7 +1944,9 @@ class WindowAttention(nn.Module):
 
         if mask is not None:
             nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(
+                1
+            ).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
             attn = self.softmax(attn)
         else:
@@ -1825,7 +1967,12 @@ class WindowAttention(nn.Module):
 
 class Mlp(nn.Module):
     def __init__(
-        self, in_features, hidden_features=None, out_features=None, act_layer=nn.SiLU, drop=0.0
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.SiLU,
+        drop=0.0,
     ):
         super().__init__()
         out_features = out_features or in_features
@@ -1849,14 +1996,18 @@ def window_partition(x, window_size):
     B, H, W, C = x.shape
     assert H % window_size == 0, "feature map h and w can not divide by window size"
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    windows = (
+        x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    )
     return windows
 
 
 def window_reverse(windows, window_size, H, W):
 
     B = int(windows.shape[0] / (H * W / window_size / window_size))
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = windows.view(
+        B, H // window_size, W // window_size, window_size, window_size, -1
+    )
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
@@ -1887,7 +2038,9 @@ class SwinTransformerLayer(nn.Module):
         #     # if window size is larger than input resolution, we don't partition windows
         #     self.shift_size = 0
         #     self.window_size = min(self.input_resolution)
-        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+        assert (
+            0 <= self.shift_size < self.window_size
+        ), "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
@@ -1904,7 +2057,10 @@ class SwinTransformerLayer(nn.Module):
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
         )
 
     def create_mask(self, H, W):
@@ -1970,7 +2126,9 @@ class SwinTransformerLayer(nn.Module):
 
         # cyclic shift
         if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_x = torch.roll(
+                x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2)
+            )
         else:
             shifted_x = x
 
@@ -1983,7 +2141,9 @@ class SwinTransformerLayer(nn.Module):
         )  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(
+            x_windows, mask=attn_mask
+        )  # nW*B, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -1991,7 +2151,9 @@ class SwinTransformerLayer(nn.Module):
 
         # reverse cyclic shift
         if self.shift_size > 0:
-            x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            x = torch.roll(
+                shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2)
+            )
         else:
             x = shifted_x
         x = x.view(B, H * W, C)
@@ -2165,8 +2327,12 @@ class WindowAttention_v2(nn.Module):
         coords_w = torch.arange(self.window_size[1])
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
         coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords = (
+            coords_flatten[:, :, None] - coords_flatten[:, None, :]
+        )  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(
+            1, 2, 0
+        ).contiguous()  # Wh*Ww, Wh*Ww, 2
         relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
         relative_coords[:, :, 1] += self.window_size[1] - 1
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
@@ -2191,15 +2357,25 @@ class WindowAttention_v2(nn.Module):
         qkv_bias = None
         if self.q_bias is not None:
             qkv_bias = torch.cat(
-                (self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias)
+                (
+                    self.q_bias,
+                    torch.zeros_like(self.v_bias, requires_grad=False),
+                    self.v_bias,
+                )
             )
         qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
         qkv = qkv.reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = (
+            qkv[0],
+            qkv[1],
+            qkv[2],
+        )  # make torchscript happy (cannot use tensor as tuple)
 
         # cosine attention
         attn = F.normalize(q, dim=-1) @ F.normalize(k, dim=-1).transpose(-2, -1)
-        logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1.0 / 0.01))).exp()
+        logit_scale = torch.clamp(
+            self.logit_scale, max=torch.log(torch.tensor(1.0 / 0.01))
+        ).exp()
         attn = attn * logit_scale
 
         relative_position_bias_table = self.cpb_mlp(self.relative_coords_table).view(
@@ -2208,7 +2384,9 @@ class WindowAttention_v2(nn.Module):
         relative_position_bias = relative_position_bias_table[
             self.relative_position_index.view(-1)
         ].view(
-            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1
+            self.window_size[0] * self.window_size[1],
+            self.window_size[0] * self.window_size[1],
+            -1,
         )  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(
             2, 0, 1
@@ -2218,7 +2396,9 @@ class WindowAttention_v2(nn.Module):
 
         if mask is not None:
             nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(
+                1
+            ).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
             attn = self.softmax(attn)
         else:
@@ -2257,7 +2437,12 @@ class WindowAttention_v2(nn.Module):
 
 class Mlp_v2(nn.Module):
     def __init__(
-        self, in_features, hidden_features=None, out_features=None, act_layer=nn.SiLU, drop=0.0
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.SiLU,
+        drop=0.0,
     ):
         super().__init__()
         out_features = out_features or in_features
@@ -2280,14 +2465,18 @@ def window_partition_v2(x, window_size):
 
     B, H, W, C = x.shape
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    windows = (
+        x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    )
     return windows
 
 
 def window_reverse_v2(windows, window_size, H, W):
 
     B = int(windows.shape[0] / (H * W / window_size / window_size))
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = windows.view(
+        B, H // window_size, W // window_size, window_size, window_size, -1
+    )
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
@@ -2319,7 +2508,9 @@ class SwinTransformerLayer_v2(nn.Module):
         #    # if window size is larger than input resolution, we don't partition windows
         #    self.shift_size = 0
         #    self.window_size = min(self.input_resolution)
-        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+        assert (
+            0 <= self.shift_size < self.window_size
+        ), "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention_v2(
@@ -2336,7 +2527,10 @@ class SwinTransformerLayer_v2(nn.Module):
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp_v2(
-            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
         )
 
     def create_mask(self, H, W):
@@ -2401,7 +2595,9 @@ class SwinTransformerLayer_v2(nn.Module):
 
         # cyclic shift
         if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_x = torch.roll(
+                x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2)
+            )
         else:
             shifted_x = x
 
@@ -2414,7 +2610,9 @@ class SwinTransformerLayer_v2(nn.Module):
         )  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(
+            x_windows, mask=attn_mask
+        )  # nW*B, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -2422,7 +2620,9 @@ class SwinTransformerLayer_v2(nn.Module):
 
         # reverse cyclic shift
         if self.shift_size > 0:
-            x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            x = torch.roll(
+                shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2)
+            )
         else:
             x = shifted_x
         x = x.view(B, H * W, C)

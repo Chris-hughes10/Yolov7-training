@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 import numpy as np
 
 import albumentations as A
+
+
 def yolov7_collate_fn(batch):
     images, labels, indices = zip(*batch)  # transposed
     for i, l in enumerate(labels):

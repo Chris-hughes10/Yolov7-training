@@ -30,7 +30,9 @@ class Sum(nn.Module):
         self.weight = weight  # apply weights boolean
         self.iter = range(n - 1)  # iter object
         if weight:
-            self.w = nn.Parameter(-torch.arange(1.0, n) / 2, requires_grad=True)  # layer weights
+            self.w = nn.Parameter(
+                -torch.arange(1.0, n) / 2, requires_grad=True
+            )  # layer weights
 
     def forward(self, x):
         y = x[0]  # no weight
@@ -63,7 +65,10 @@ class MixConv2d(nn.Module):
             ].round()  # solve for equal weight indices, ax = b
 
         self.m = nn.ModuleList(
-            [nn.Conv2d(c1, int(c_[g]), k[g], s, k[g] // 2, bias=False) for g in range(groups)]
+            [
+                nn.Conv2d(c1, int(c_[g]), k[g], s, k[g] // 2, bias=False)
+                for g in range(groups)
+            ]
         )
         self.bn = nn.BatchNorm2d(c2)
         self.act = nn.LeakyReLU(0.1, inplace=True)
@@ -105,12 +110,16 @@ class ORT_NMS(torch.autograd.Function):
         batches = torch.randint(0, batch, (num_det,)).sort()[0].to(device)
         idxs = torch.arange(100, 100 + num_det).to(device)
         zeros = torch.zeros((num_det,), dtype=torch.int64).to(device)
-        selected_indices = torch.cat([batches[None], zeros[None], idxs[None]], 0).T.contiguous()
+        selected_indices = torch.cat(
+            [batches[None], zeros[None], idxs[None]], 0
+        ).T.contiguous()
         selected_indices = selected_indices.to(torch.int64)
         return selected_indices
 
     @staticmethod
-    def symbolic(g, boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold):
+    def symbolic(
+        g, boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold
+    ):
         return g.op(
             "NonMaxSuppression",
             boxes,
@@ -179,7 +188,9 @@ class TRT_NMS(torch.autograd.Function):
 class ONNX_ORT(nn.Module):
     """onnx module with ONNX-Runtime NMS operation."""
 
-    def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=640, device=None):
+    def __init__(
+        self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=640, device=None
+    ):
         super().__init__()
         self.device = device if device else torch.device("cpu")
         self.max_obj = torch.tensor([max_obj]).to(device)
@@ -216,7 +227,9 @@ class ONNX_ORT(nn.Module):
 class ONNX_TRT(nn.Module):
     """onnx module with TensorRT NMS operation."""
 
-    def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None):
+    def __init__(
+        self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None
+    ):
         super().__init__()
         assert max_wh is None
         self.device = device if device else torch.device("cpu")
@@ -251,7 +264,13 @@ class End2End(nn.Module):
     """export onnx or tensorrt model with NMS operation."""
 
     def __init__(
-        self, model, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None
+        self,
+        model,
+        max_obj=100,
+        iou_thres=0.45,
+        score_thres=0.25,
+        max_wh=None,
+        device=None,
     ):
         super().__init__()
         device = device if device else torch.device("cpu")

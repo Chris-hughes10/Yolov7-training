@@ -39,7 +39,9 @@ def attempt_download(file, repo="WongKinYiu/yolov7"):
             if len(response) > 0:
                 release_assets = response[0]  # get dictionary of assets
                 # Get names of assets if it rleases exists
-                assets = [release_asset["name"] for release_asset in release_assets["assets"]]
+                assets = [
+                    release_asset["name"] for release_asset in release_assets["assets"]
+                ]
                 # Get first tag which is the latest tag
                 tag = release_assets.get("tag_name")
         except KeyError:  # fallback plan
@@ -76,13 +78,18 @@ def gdrive_download(id="", file="tmp.zip"):
     t = time.time()
     file = Path(file)
     cookie = Path("cookie")  # gdrive cookie
-    print(f"Downloading https://drive.google.com/uc?export=download&id={id} as {file}... ", end="")
+    print(
+        f"Downloading https://drive.google.com/uc?export=download&id={id} as {file}... ",
+        end="",
+    )
     file.unlink(missing_ok=True)  # remove existing file
     cookie.unlink(missing_ok=True)  # remove existing cookie
 
     # Attempt file download
     out = "NUL" if platform.system() == "Windows" else "/dev/null"
-    os.system(f'curl -c ./cookie -s -L "drive.google.com/uc?export=download&id={id}" > {out}')
+    os.system(
+        f'curl -c ./cookie -s -L "drive.google.com/uc?export=download&id={id}" > {out}'
+    )
     if os.path.exists("cookie"):  # large file
         s = f'curl -Lb ./cookie "drive.google.com/uc?export=download&confirm={get_token()}&id={id}" -o {file}'
     else:  # small file

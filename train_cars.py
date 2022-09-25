@@ -12,36 +12,47 @@ from torch.utils.data import Subset
 from data import DatasetAdaptor, load_cars_df
 from datasets import MosaicMixupDataset
 from calculate_map import CalculateMetricsCallback
-from yolov7.dataset import create_base_transforms, Yolov7Dataset, create_yolov7_transforms, \
-    yolov7_collate_fn
-from yolov7.loss_factory import create_loss
+from yolov7.dataset import (
+    create_base_transforms,
+    Yolov7Dataset,
+    create_yolov7_transforms,
+    yolov7_collate_fn,
+)
+from yolov7.loss_factory import create_yolov7_loss
 from yolov7.model_factory import create_yolov7_model
 from yolov7.trainer import Yolov7Trainer
 
 
 def main():
-    data_path = '/home/chris/Downloads/data'
+    data_path = "/home/chris/Downloads/data"
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
-    yolov7_config_path = Path('model_configs')
+    yolov7_config_path = Path("model_configs")
 
-    train_df, valid_df, lookups= load_cars_df(annotations_file_path, images_path)
+    train_df, valid_df, lookups = load_cars_df(annotations_file_path, images_path)
 
-    label_to_class_id = {'car': 0}
+    label_to_class_id = {"car": 0}
 
-
-    train_ds = DatasetAdaptor(images_path, train_df, label_to_class_id, bgr_images=False,
-                              transforms=create_base_transforms(640)
-                              # transforms=create_base_transforms(1280)
-                              )
+    train_ds = DatasetAdaptor(
+        images_path,
+        train_df,
+        label_to_class_id,
+        bgr_images=False,
+        transforms=create_base_transforms(640)
+        # transforms=create_base_transforms(1280)
+    )
     eval_ds = DatasetAdaptor(images_path, valid_df, label_to_class_id, bgr_images=False)
 
     mds = MosaicMixupDataset(train_ds, apply_mixup_probability=0.15)
     mds.disable()
 
-    train_yds = Yolov7Dataset(mds, create_yolov7_transforms(training=True, image_size=(640, 640)))
-    eval_yds = Yolov7Dataset(eval_ds, create_yolov7_transforms(training=False, image_size=(640, 640)))
+    train_yds = Yolov7Dataset(
+        mds, create_yolov7_transforms(training=True, image_size=(640, 640))
+    )
+    eval_yds = Yolov7Dataset(
+        eval_ds, create_yolov7_transforms(training=False, image_size=(640, 640))
+    )
 
     num_classes = 1
 
@@ -61,9 +72,9 @@ def main():
         v.weight
         for k, v in model.named_modules()
         if (
-                hasattr(v, "weight")
-                and isinstance(v.weight, nn.Parameter)
-                and not isinstance(v, nn.BatchNorm2d)
+            hasattr(v, "weight")
+            and isinstance(v.weight, nn.Parameter)
+            and not isinstance(v, nn.BatchNorm2d)
         )
     }
 
@@ -76,17 +87,17 @@ def main():
     optimizer = torch.optim.SGD(other_params, lr=lr, momentum=momentum, nesterov=True)
     # optimizer = timm.optim.AdamW(other_params, lr=lr, weight_decay=0)
 
-    loss_func = create_loss(model, aux_loss=False)
+    loss_func = create_yolov7_loss(model, aux_loss=False)
 
     cooldown_epochs = 5
 
-    batch_size=8
+    batch_size = 8
 
     trainer = Yolov7Trainer(
         model=model,
         optimizer=optimizer,
         loss_func=loss_func,
-        eval_loss_func=create_loss(model, ota_loss=False),
+        eval_loss_func=create_yolov7_loss(model, ota_loss=False),
         eval_image_idx_to_id_lookup=eval_ds.image_idx_to_image_id,
         callbacks=[
             CalculateMetricsCallback(),
@@ -95,8 +106,12 @@ def main():
     )
 
     nbs = 64  # nominal batch size
-    total_batch_size = batch_size * trainer._accelerator.num_processes  # batch size across all processes
-    num_accumulate_steps = max(round(nbs / total_batch_size), 1)  # calculate num accum steps
+    total_batch_size = (
+        batch_size * trainer._accelerator.num_processes
+    )  # batch size across all processes
+    num_accumulate_steps = max(
+        round(nbs / total_batch_size), 1
+    )  # calculate num accum steps
     weight_decay = 0.0005  # default
     weight_decay *= total_batch_size * num_accumulate_steps / nbs  # scale weight_decay
 
@@ -112,12 +127,13 @@ def main():
         create_scheduler_fn=CosineLrScheduler.create_scheduler_fn(
             num_warmup_epochs=5, num_cooldown_epochs=cooldown_epochs
         ),
-        train_dataloader_kwargs={'num_workers': 0},
+        train_dataloader_kwargs={"num_workers": 0},
         eval_dataloader_kwargs={"pin_memory": False, "num_workers": 0},
         collate_fn=yolov7_collate_fn,
         gradient_accumulation_steps=num_accumulate_steps,
     )
 
-if __name__ == '__main__':
-    os.environ['mixed_precision'] = 'fp16'
+
+if __name__ == "__main__":
+    os.environ["mixed_precision"] = "fp16"
     notebook_launcher(main, num_processes=2)

@@ -14,25 +14,29 @@ class DisableAugmentationCallback(TrainerCallback):
         self.no_aug_epochs = no_aug_epochs
 
     def on_train_epoch_start(self, trainer, **kwargs):
-        if trainer.run_history.current_epoch == trainer.run_config.num_epochs - self.no_aug_epochs:
+        if (
+            trainer.run_history.current_epoch
+            == trainer.run_config.num_epochs - self.no_aug_epochs
+        ):
             trainer.print("Disabling Mosaic Augmentation")
             trainer.train_dataset.ds.disable()
 
-def remove_padding(padded_tensor: Tensor, pad_value):
-    padding_mask = padded_tensor == pad_value
-
-    if padding_mask.ndim > 1:
-        padding_mask = torch.all(padding_mask, dim=-1)
-
-    result =  padded_tensor[~padding_mask]
-
-    return result
 
 class Yolov7Trainer(Trainer):
     YOLO7_PADDING_VALUE = -2.0
 
-    def __init__(self, model, loss_func, eval_loss_func, optimizer, callbacks, eval_image_idx_to_id_lookup):
-        super().__init__(model=model, loss_func=loss_func, optimizer=optimizer, callbacks=callbacks)
+    def __init__(
+        self,
+        model,
+        loss_func,
+        eval_loss_func,
+        optimizer,
+        callbacks,
+        eval_image_idx_to_id_lookup,
+    ):
+        super().__init__(
+            model=model, loss_func=loss_func, optimizer=optimizer, callbacks=callbacks
+        )
         self.eval_loss_func = eval_loss_func
         self.eval_predictions = []
         self.eval_image_idx_to_id_lookup = eval_image_idx_to_id_lookup
@@ -81,18 +85,29 @@ class Yolov7Trainer(Trainer):
             nms_preds = []
 
             for pred in preds:
-                nms_idx = torchvision.ops.batched_nms(boxes=pred[:, :4],
-                                                      scores=pred[:, 4],
-                                                      idxs=pred[:, 5],
-                                                      iou_threshold=0.1)
+                nms_idx = torchvision.ops.batched_nms(
+                    boxes=pred[:, :4],
+                    scores=pred[:, 4],
+                    idxs=pred[:, 5],
+                    iou_threshold=0.1,
+                )
                 nms_preds.append(pred[nms_idx])
 
             preds = nms_preds
 
-        gathered_predictions = self.get_formatted_preds(image_idxs, preds).detach().cpu()
-        stacked_targets = self.get_formatted_targets(labels, image_idxs, images)
+        formatted_predictions = (
+            self.get_formatted_preds(image_idxs, preds).detach().cpu()
+        )
+        formatted_targets = self.get_formatted_targets(labels, image_idxs, images)
 
-        gathered_targets = self.gather(stacked_targets, padding_value=self.YOLO7_PADDING_VALUE).detach().cpu()
+        gathered_predictions = self.gather(
+            formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE
+        )
+        gathered_targets = (
+            self.gather(formatted_targets, padding_value=self.YOLO7_PADDING_VALUE)
+            .detach()
+            .cpu()
+        )
 
         return {
             "loss": val_loss,
@@ -101,18 +116,6 @@ class Yolov7Trainer(Trainer):
             "targets": gathered_targets,
             "batch_size": images.size(0),
         }
-
-    def gather(self, tensor, padding_value=None):
-        if padding_value is not None:
-            pad_value = torch.as_tensor(padding_value).to(dtype=tensor.dtype).item()  # ensure correct type
-            tensor = self._accelerator.pad_across_processes(tensor, pad_index=pad_value)
-
-        gathered_tensor = self._accelerator.gather(tensor)
-
-        if padding_value is not None:
-            gathered_tensor = remove_padding(gathered_tensor, padding_value)
-
-        return gathered_tensor
 
     def get_formatted_preds(self, image_idxs, preds):
         formatted_preds = []
@@ -130,13 +133,13 @@ class Yolov7Trainer(Trainer):
 
         if not formatted_preds:
             # create placeholder so that it can be gathered across processes
-            stacked_preds = torch.tensor([self.YOLO7_PADDING_VALUE] * 7, device=self.device)[None]
+            stacked_preds = torch.tensor(
+                [self.YOLO7_PADDING_VALUE] * 7, device=self.device
+            )[None]
         else:
             stacked_preds = torch.vstack(formatted_preds)
 
-        gathered_predictions = self.gather(stacked_preds, padding_value=self.YOLO7_PADDING_VALUE)
-
-        return gathered_predictions
+        return stacked_preds
 
     def get_formatted_targets(self, labels, image_idxs, images):
         formatted_targets = []
@@ -146,7 +149,9 @@ class Yolov7Trainer(Trainer):
             # denormalize
             image_labels[:, [1, 3]] = image_labels[:, [1, 3]] * images.shape[-2]
             image_labels[:, [2, 4]] = image_labels[:, [2, 4]] * images.shape[-1]
-            xyxy_labels = torchvision.ops.box_convert(image_labels[:, 1:], 'cxcywh', 'xyxy')
+            xyxy_labels = torchvision.ops.box_convert(
+                image_labels[:, 1:], "cxcywh", "xyxy"
+            )
             formatted_targets.append(
                 # cx, cy, w, h, class_id, image_idx
                 torch.cat(
@@ -161,9 +166,10 @@ class Yolov7Trainer(Trainer):
 
         if not formatted_targets:
             # create placeholder so that it can be gathered across processes
-            stacked_targets = torch.tensor([self.YOLO7_PADDING_VALUE] * 6, device=self.device)[None]
+            stacked_targets = torch.tensor(
+                [self.YOLO7_PADDING_VALUE] * 6, device=self.device
+            )[None]
         else:
             stacked_targets = torch.vstack(formatted_targets)
 
         return stacked_targets
-

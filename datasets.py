@@ -66,7 +66,9 @@ def create_resize_transform(output_height, output_width, pad_colour):
 
 
 class MosaicBuilder:
-    def __init__(self, fix_centre, output_height, output_width, pad_colour=(144, 144, 144)):
+    def __init__(
+        self, fix_centre, output_height, output_width, pad_colour=(144, 144, 144)
+    ):
         self.fix_centre = fix_centre
         self.output_height = output_height
         self.output_width = output_width
@@ -178,11 +180,17 @@ class MosaicBuilder:
             centre_x = 2 * self.output_width // 2
             centre_y = 2 * self.output_height // 2
         else:
-            centre_x = int(random.uniform(0.5 * self.output_width, 1.5 * self.output_width))
-            centre_y = int(random.uniform(0.5 * self.output_height, 1.5 * self.output_height))
+            centre_x = int(
+                random.uniform(0.5 * self.output_width, 1.5 * self.output_width)
+            )
+            centre_y = int(
+                random.uniform(0.5 * self.output_height, 1.5 * self.output_height)
+            )
         return centre_x, centre_y
 
-    def _get_mosaic_coordinates(self, position_idx, centre_x, centre_y, image_height, image_width):
+    def _get_mosaic_coordinates(
+        self, position_idx, centre_x, centre_y, image_height, image_width
+    ):
         if position_idx == 0:  # top left
             mosaic_x1, mosaic_y1, mosaic_x2, mosaic_y2 = (
                 max(centre_x - image_width, 0),
@@ -345,7 +353,9 @@ class MosaicMixupDataset:
         apply_mosaic = random.random() <= self.apply_mosaic_probability
         if apply_mosaic:
 
-            indices = [index] + torch.randint(low=0, high=len(self._dataset), size=(3,)).tolist()
+            indices = [index] + torch.randint(
+                low=0, high=len(self._dataset), size=(3,)
+            ).tolist()
             random.shuffle(indices)
 
             mosaic_images, mosaic_boxes, mosaic_classes, idxs = zip(
@@ -387,7 +397,9 @@ class MosaicMixupDataset:
         while len(mixup_boxes) == 0:
             # select a random image with labels from the dataset to use as mixup image
             mixup_image_index = random.randint(0, self.__len__() - 1)
-            mixup_image, mixup_boxes, mixup_classes, idx = self.load_from_dataset(mixup_image_index)
+            mixup_image, mixup_boxes, mixup_classes, idx = self.load_from_dataset(
+                mixup_image_index
+            )
             mixup_image, mixup_boxes, mixup_classes = _apply_transform(
                 self._resize_transform,
                 image=mixup_image,
@@ -412,7 +424,6 @@ class MosaicMixupDataset:
                     output_width,
                     border_mode=0,
                     value=pad_colour,
-                    # position='top_left'
                 ),
                 A.Resize(height=output_height, width=output_width),
             ],

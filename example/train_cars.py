@@ -53,7 +53,9 @@ def main():
 
     num_classes = 1
 
-    model = create_yolov7_model(architecture='yolov7', num_classes=num_classes, pretrained=True)
+    model = create_yolov7_model(
+        architecture="yolov7", num_classes=num_classes, pretrained=True
+    )
 
     conv_weights = {
         v.weight

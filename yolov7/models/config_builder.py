@@ -11,7 +11,8 @@ from yolov7.models.core.layers import (
     RepConv,
     DownC,
     Shortcut,
-    ReOrg,)
+    ReOrg,
+)
 
 
 def make_divisible(x, divisor):
@@ -26,9 +27,7 @@ def create_model_from_config(model_config):
     gd = model_config["depth_multiple"]
     gw = model_config["width_multiple"]
 
-    num_anchors = (
-        (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors
-    )
+    num_anchors = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors
     num_outputs = num_anchors * (num_classes + 5)
     layers = []
     save_output_layer_idxs = []

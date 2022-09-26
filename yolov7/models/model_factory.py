@@ -8,7 +8,6 @@ from yolov7.utils import intersect_dicts
 MODEL_CONFIGS = {"yolov7": get_yolov7_config}
 
 
-
 @local_process_zero_first
 def create_yolov7_model(
     architecture, num_classes=80, anchors=None, num_channels=3, pretrained=True
@@ -33,6 +32,6 @@ def create_yolov7_model(
                 f"Transferred {len(state_dict)}/{len(model.state_dict())} items from {state_dict_path}"
             )
         except Exception as e:
-            print(f'Unable to load pretrained model weights from {state_dict_path}')
+            print(f"Unable to load pretrained model weights from {state_dict_path}")
             print(e)
     return model

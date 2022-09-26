@@ -70,9 +70,9 @@ class Yolov7Model(nn.Module):
 
             if self.traced:
                 if (
-                        isinstance(module_, Detect)
-                        or isinstance(module_, IDetect)
-                        or isinstance(module_, IAuxDetect)
+                    isinstance(module_, Detect)
+                    or isinstance(module_, IDetect)
+                    or isinstance(module_, IAuxDetect)
                 ):
                     break
 
@@ -93,13 +93,13 @@ def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
     ]
 
     for image_idx, detections_for_image in enumerate(
-            model_outputs
+        model_outputs
     ):  # image index, image inference
 
         # filter by confidence
         detections_for_image = detections_for_image[
             detections_for_image[:, 4] >= conf_thres
-            ]
+        ]
 
         # If none remain process next image
         if not detections_for_image.shape[0]:
@@ -107,13 +107,13 @@ def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
 
         if num_classes == 1:
             detections_for_image[:, 5:] = detections_for_image[
-                                          :, 4:5
-                                          ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
+                :, 4:5
+            ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
             # so there is no need to multiply.
         else:
             detections_for_image[:, 5:] *= detections_for_image[
-                                           :, 4:5
-                                           ]  # conf = obj_conf * cls_conf
+                :, 4:5
+            ]  # conf = obj_conf * cls_conf
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
@@ -125,7 +125,7 @@ def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
         # filter by class confidence
         detections_for_image = torch.cat((box, conf, class_idx), 1)[
             conf.view(-1) > conf_thres
-            ]
+        ]
 
         # Check shape
         n = detections_for_image.shape[0]  # number of boxes

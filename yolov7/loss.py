@@ -10,6 +10,7 @@ from yolov7.migrated.utils.general import (
 )
 from yolov7.migrated.utils.torch_utils import is_parallel
 
+
 def box_iou(box1, box2):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
     """
@@ -42,6 +43,7 @@ def box_iou(box1, box2):
     return inter / (
         area1[:, None] + area2 - inter
     )  # iou = inter / (area1 + area2 - inter)
+
 
 def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
     # Returns the IoU of box1 to box2. box1 is 4, box2 is nx4
@@ -103,9 +105,6 @@ def smooth_BCE(
 ):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
     return 1.0 - 0.5 * eps, 0.5 * eps
-
-
-
 
 
 class FocalLoss(nn.Module):
@@ -578,14 +577,24 @@ class ComputeLossOTA:
                 matching_targets[i] = torch.cat(matching_targets[i], dim=0)
                 matching_anchs[i] = torch.cat(matching_anchs[i], dim=0)
             else:
-                matching_bs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_as[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gjs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gis[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_bs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_as[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gjs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gis[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
                 matching_targets[i] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_anchs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_anchs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
 
         return (
             matching_bs,
@@ -981,14 +990,24 @@ class ComputeLossAuxOTA:
                 matching_targets[i] = torch.cat(matching_targets[i], dim=0)
                 matching_anchs[i] = torch.cat(matching_anchs[i], dim=0)
             else:
-                matching_bs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_as[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gjs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gis[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_bs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_as[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gjs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gis[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
                 matching_targets[i] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_anchs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_anchs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
 
         return (
             matching_bs,
@@ -1144,14 +1163,24 @@ class ComputeLossAuxOTA:
                 matching_targets[i] = torch.cat(matching_targets[i], dim=0)
                 matching_anchs[i] = torch.cat(matching_anchs[i], dim=0)
             else:
-                matching_bs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_as[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gjs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
-                matching_gis[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_bs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_as[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gjs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
+                matching_gis[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
                 matching_targets[i] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_anchs[i] = torch.tensor([], device=targets.device, dtype=torch.int64)
+                matching_anchs[i] = torch.tensor(
+                    [], device=targets.device, dtype=torch.int64
+                )
 
         return (
             matching_bs,

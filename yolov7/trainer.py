@@ -65,7 +65,6 @@ class Yolov7Trainer(Trainer):
             "batch_size": images.size(0),
         }
 
-
     def calculate_eval_batch_loss(self, batch) -> dict:
         with torch.no_grad():
             images, labels, image_idxs = batch[0], batch[1], batch[2]
@@ -73,9 +72,10 @@ class Yolov7Trainer(Trainer):
 
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
-            preds = process_yolov7_outputs(model_outputs, conf_thres=0.001, max_detections=300000)
+            preds = process_yolov7_outputs(
+                model_outputs, conf_thres=0.001, max_detections=300000
+            )
             # show_image(images[0].permute((1, 2, 0)).detach().cpu(), formatted_predictions[formatted_predictions[:, -1] == 0][:, :4].detach().cpu().tolist())
-
 
             nms_preds = []
 
@@ -90,14 +90,14 @@ class Yolov7Trainer(Trainer):
 
             preds = nms_preds
 
-        formatted_predictions = (
-            self.get_formatted_preds(image_idxs, preds)
-        )
+        formatted_predictions = self.get_formatted_preds(image_idxs, preds)
         formatted_targets = self.get_formatted_targets(labels, image_idxs, images)
 
-        gathered_predictions = self.gather(
-            formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE
-        ).detach().cpu()
+        gathered_predictions = (
+            self.gather(formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE)
+            .detach()
+            .cpu()
+        )
         gathered_targets = (
             self.gather(formatted_targets, padding_value=self.YOLO7_PADDING_VALUE)
             .detach()

@@ -179,7 +179,6 @@ def intersect_dicts(da, db, exclude=()):
     }
 
 
-
 def find_modules(model, mclass=nn.Conv2d):
     # Finds layer indices matching module class 'mclass'
     return [i for i, m in enumerate(model.module_list) if isinstance(m, mclass)]
@@ -446,7 +445,7 @@ class TracedModel(nn.Module):
         self.detect_layer.to(device)
         print(" model is traced! \n")
 
-    def forward(self, x, augment=False, profile=False):
+    def forward(self, x):
         out = self.model(x)
         out = self.detect_layer(out)
         return out

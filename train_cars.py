@@ -12,6 +12,7 @@ from torch.utils.data import Subset
 from data import DatasetAdaptor, load_cars_df
 from datasets import MosaicMixupDataset
 from calculate_map import CalculateMetricsCallback
+from yolov7 import create_yolov7_model
 from yolov7.dataset import (
     create_base_transforms,
     Yolov7Dataset,
@@ -19,7 +20,6 @@ from yolov7.dataset import (
     yolov7_collate_fn,
 )
 from yolov7.loss_factory import create_yolov7_loss
-from yolov7.model_factory import create_yolov7_model
 from yolov7.trainer import Yolov7Trainer
 
 
@@ -28,7 +28,6 @@ def main():
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
-    yolov7_config_path = Path("model_configs")
 
     train_df, valid_df, lookups = load_cars_df(annotations_file_path, images_path)
 
@@ -56,17 +55,7 @@ def main():
 
     num_classes = 1
 
-    # model = create_yolov7_model(
-    #     config=yolov7_config_path / "yolov7-e6e.yaml",
-    #     state_dict_path=yolov7_config_path / "yolov7-e6e_training_state_dict.pt",
-    #     num_classes=num_classes,
-    # )
-
-    model = create_yolov7_model(
-        config=yolov7_config_path / "yolov7.yaml",
-        state_dict_path=yolov7_config_path / "yolov7_training_state_dict.pt",
-        num_classes=num_classes,
-    )
+    model = create_yolov7_model(architecture='yolov7', num_classes=num_classes, pretrained=True)
 
     conv_weights = {
         v.weight

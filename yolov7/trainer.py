@@ -6,8 +6,6 @@ from pytorch_accelerated.callbacks import TrainerCallback
 import pandas as pd
 from torch import Tensor
 
-from yolov7.model_factory import process_yolov7_outputs
-
 
 class DisableAugmentationCallback(TrainerCallback):
     def __init__(self, no_aug_epochs):
@@ -71,8 +69,6 @@ class Yolov7Trainer(Trainer):
             "batch_size": images.size(0),
         }
 
-    def eval_epoch_start(self):
-        super(Yolov7Trainer, self).eval_epoch_start()
 
     def calculate_eval_batch_loss(self, batch) -> dict:
         with torch.no_grad():
@@ -80,7 +76,7 @@ class Yolov7Trainer(Trainer):
             model_outputs = self.model(images)
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
-            preds = process_yolov7_outputs(model_outputs)
+            preds = self.model.process_outputs(model_outputs)
 
             nms_preds = []
 

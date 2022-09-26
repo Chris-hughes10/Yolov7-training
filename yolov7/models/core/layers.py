@@ -3,6 +3,7 @@
 import torch
 from torch import nn
 
+
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
@@ -52,6 +53,7 @@ class Concat(nn.Module):
     def forward(self, x):
         return torch.cat(x, self.d)
 
+
 class Shortcut(nn.Module):
     def __init__(self, dimension=0):
         super(Shortcut, self).__init__()
@@ -59,6 +61,7 @@ class Shortcut(nn.Module):
 
     def forward(self, x):
         return x[0] + x[1]
+
 
 class Conv(nn.Module):
     # Standard convolution
@@ -79,6 +82,7 @@ class Conv(nn.Module):
 
     def fuseforward(self, x):
         return self.act(self.conv(x))
+
 
 class SPPCSPC(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -101,6 +105,7 @@ class SPPCSPC(nn.Module):
         y1 = self.cv6(self.cv5(torch.cat([x1] + [m(x1) for m in self.m], 1)))
         y2 = self.cv2(x)
         return self.cv7(torch.cat((y1, y2), dim=1))
+
 
 class ImplicitA(nn.Module):
     def __init__(self, channel, mean=0.0, std=0.02):
@@ -127,6 +132,7 @@ class ImplicitM(nn.Module):
     def forward(self, x):
         return self.implicit * x
 
+
 class DownC(nn.Module):
     # Spatial pyramid pooling layer used in YOLOv3-SPP
     def __init__(self, c1, c2, n=1, k=2):
@@ -139,6 +145,7 @@ class DownC(nn.Module):
 
     def forward(self, x):
         return torch.cat((self.cv2(self.cv1(x)), self.cv3(self.mp(x))), dim=1)
+
 
 class RepConv(nn.Module):
     # Represented convolution

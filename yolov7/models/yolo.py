@@ -1,99 +1,92 @@
-# copied from https://github.com/WongKinYiu/yolov7/blob/main/models/yolo.py
+# Adapted from from https://github.com/WongKinYiu/yolov7/blob/main/models/yolo.py
 
 import logging
-import sys
+from copy import deepcopy
 
-import math
 import torch
+import torchvision
 from torch import nn
 
 from yolov7.anchors import check_anchor_order
 from yolov7.migrated.models.common import RepConv
-from yolov7.models.core.layers import Conv
 from yolov7.models.core.detection_heads import Detect, IDetect, IAuxDetect
-from yolov7.models.model_configs import parse_model
+from yolov7.models.core.layer_operations import fuse_conv_and_bn
+from yolov7.models.core.layers import Conv
 from yolov7.models.model_factory import create_model_from_config
 
-sys.path.append("/")  # to run '$ python *.py' files in subdirectories
 logger = logging.getLogger(__name__)
-from yolov7.migrated.utils.torch_utils import (
-    fuse_conv_and_bn,
-)
 
 
-class Model(nn.Module):
-    def __init__(
-            self, architecture="yolov7", ch=3, nc=80, anchors=None, pretrained=False
-    ):  # model, input channels, number of classes
-        super(Model, self).__init__()
-        self.pretrained = pretrained
-        self.ch = ch
+class Yolov7Model(nn.Module):
+    def __init__(self, model_config):
+        super().__init__()
+        self.config = model_config
+        self.num_channels = self.config["ch"]
+        self.nc = self.config["nc"]
+        self.stride = None
+        self.traced = False
 
-        model_config = create_model_from_config(architecture, num_classes=nc, anchors=anchors)
-        self.model, self.save_output_layer_idxs = parse_model(model_config, [ch])
+        self.model, self.save_output_layer_idxs = create_model_from_config(
+            model_config=deepcopy(self.config),
+        )
+        self.initialize_anchors()
 
-        self.initialize()
-
-    def initialize(self):
-        # Build strides, anchors
-        m = self.model[-1]  # Detect()
+    def initialize_anchors(self):
+        detection_head = self.model[-1]
         s = 256  # 2x min stride
-        if isinstance(m, Detect) or isinstance(m, IDetect):
-            m.stride = torch.tensor(
-                [s / x.shape[-2] for x in self.forward(torch.zeros(1, self.ch, s, s))]
-            )  # forward
-            m.anchors /= m.stride.view(-1, 1, 1)
-            check_anchor_order(m)
-            self.stride = m.stride
+        if isinstance(detection_head, Detect) or isinstance(detection_head, IDetect):
+            detection_head.stride = torch.tensor(
+                [
+                    s / x.shape[-2]
+                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))
+                ]
+            )
 
-            if not self.pretrained:
-                _initialize_biases(self.model)  # only run once
-        if isinstance(m, IAuxDetect):
-            m.stride = torch.tensor(
-                [s / x.shape[-2] for x in self.forward(torch.zeros(1, self.ch, s, s))[:4]]
-            )  # forward
-            m.anchors /= m.stride.view(-1, 1, 1)
-            check_anchor_order(m)
-            self.stride = m.stride
-            if not self.pretrained:
-                _initialize_aux_biases(self.model)  # only run once
-            # print('Strides: %s' % m.stride.tolist())
+        elif isinstance(detection_head, IAuxDetect):
+            detection_head.stride = torch.tensor(
+                [
+                    s / x.shape[-2]
+                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))[:4]
+                ]
+            )
 
-        # Init weights, biases
-        initialize_weights(self)
-
+        detection_head.anchors /= detection_head.stride.view(-1, 1, 1)
+        check_anchor_order(detection_head)
+        self.stride = detection_head.stride
 
     def forward(self, x):
-        intermediate_outputs = []  # outputs
-        for m in self.model:
-            if m.from_index != -1:  # if not from previous layer
+        intermediate_outputs = []
+        for module_ in self.model:
+            if module_.from_index != -1:
+                # if input not from previous layer, get intermediate outputs
                 x = (
-                    intermediate_outputs[m.from_index]
-                    if isinstance(m.from_index, int)
-                    else [x if j == -1 else intermediate_outputs[j] for j in m.from_index]
-                )  # from earlier layers
-
-            if not hasattr(self, "traced"):
-                self.traced = False
+                    intermediate_outputs[module_.from_index]
+                    if isinstance(module_.from_index, int)
+                    else [
+                        x if j == -1 else intermediate_outputs[j]
+                        for j in module_.from_index
+                    ]
+                )
 
             if self.traced:
                 if (
-                        isinstance(m, Detect)
-                        or isinstance(m, IDetect)
-                        or isinstance(m, IAuxDetect)
+                        isinstance(module_, Detect)
+                        or isinstance(module_, IDetect)
+                        or isinstance(module_, IAuxDetect)
                 ):
                     break
 
-            x = m(x)  # run
+            x = module_(x)  # run
 
-            intermediate_outputs.append(x if m.attach_index in self.save_output_layer_idxs else None)  # save output
+            intermediate_outputs.append(
+                x if module_.attach_index in self.save_output_layer_idxs else None
+            )  # save output
         return x
 
     def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
         print("Fusing layers... ")
         for m in self.model.modules():
             if isinstance(m, RepConv):
-                # print(f" fuse_repvgg_block")
                 m.fuse_repvgg_block()
             elif type(m) is Conv and hasattr(m, "bn"):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
@@ -104,60 +97,59 @@ class Model(nn.Module):
                 m.forward = m.fuseforward
         return self
 
+    @staticmethod
+    def process_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
+        model_outputs = model_outputs[0]
+        num_classes = model_outputs.shape[2] - 5
 
-def initialize_weights(model):
-    for m in model.modules():
-        t = type(m)
-        if t is nn.Conv2d:
-            pass  # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-        elif t is nn.BatchNorm2d:
-            m.eps = 1e-3
-            m.momentum = 0.03
-        elif t in [nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6]:
-            m.inplace = True
+        outputs = [torch.zeros((0, 6), device=model_outputs.device)] * model_outputs.shape[
+            0
+        ]
 
-def _initialize_biases(
-            model, cf=None
-    ):  # initialize biases into Detect(), cf is class frequency
-        # https://arxiv.org/abs/1708.02002 section 3.3
-        # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
-        m = model[-1]  # Detect() module
-        for mi, s in zip(m.m, m.stride):  # from
-            b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 4] += math.log(
-                8 / (640 / s) ** 2
-            )  # obj (8 objects per 640 image)
-            b.data[:, 5:] += (
-                math.log(0.6 / (m.nc - 0.99))
-                if cf is None
-                else torch.log(cf / cf.sum())
-            )  # cls
-            mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+        for image_idx, detections_for_image in enumerate(
+                model_outputs
+        ):  # image index, image inference
 
-def _initialize_aux_biases(
-            model, cf=None
-    ):  # initialize biases into Detect(), cf is class frequency
-        # https://arxiv.org/abs/1708.02002 section 3.3
-        # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
-        m = model[-1]  # Detect() module
-        for mi, mi2, s in zip(m.m, m.m2, m.stride):  # from
-            b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 4] += math.log(
-                8 / (640 / s) ** 2
-            )  # obj (8 objects per 640 image)
-            b.data[:, 5:] += (
-                math.log(0.6 / (m.nc - 0.99))
-                if cf is None
-                else torch.log(cf / cf.sum())
-            )  # cls
-            mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
-            b2 = mi2.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b2.data[:, 4] += math.log(
-                8 / (640 / s) ** 2
-            )  # obj (8 objects per 640 image)
-            b2.data[:, 5:] += (
-                math.log(0.6 / (m.nc - 0.99))
-                if cf is None
-                else torch.log(cf / cf.sum())
-            )  # cls
-            mi2.bias = torch.nn.Parameter(b2.view(-1), requires_grad=True)
+            # filter by confidence
+            detections_for_image = detections_for_image[
+                detections_for_image[:, 4] >= conf_thres
+                ]
+
+            # If none remain process next image
+            if not detections_for_image.shape[0]:
+                continue
+
+            if num_classes == 1:
+                detections_for_image[:, 5:] = detections_for_image[
+                                              :, 4:5
+                                              ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
+                # so there is no need to multiply.
+            else:
+                detections_for_image[:, 5:] *= detections_for_image[
+                                               :, 4:5
+                                               ]  # conf = obj_conf * cls_conf
+
+            # Box (center x, center y, width, height) to (x1, y1, x2, y2)
+            box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
+
+            # best class only
+            # j, most confident class index
+            conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
+
+            # filter by class confidence
+            detections_for_image = torch.cat((box, conf, class_idx), 1)[
+                conf.view(-1) > conf_thres
+                ]
+
+            # Check shape
+            n = detections_for_image.shape[0]  # number of boxes
+            if not n:  # no boxes
+                continue
+            elif n > max_detections:  # excess boxes
+                detections_for_image = detections_for_image[
+                    detections_for_image[:, 4].argsort(descending=True)[:max_detections]
+                ]  # sort by confidence
+
+            outputs[image_idx] = detections_for_image
+
+        return outputs

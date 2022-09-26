@@ -6,7 +6,7 @@ import torchvision
 from pytorch_accelerated.callbacks import get_default_callbacks
 from torchvision.datasets.coco import CocoDetection
 
-from calculate_map import CalculateMetricsCallback
+from yolov7.evaluation import CalculateMetricsCallback
 from yolov7 import create_yolov7_model
 from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_collate_fn
 from yolov7.loss_factory import create_yolov7_loss

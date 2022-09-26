@@ -7,9 +7,9 @@ from pytorch_accelerated.callbacks import get_default_callbacks
 from pytorch_accelerated.schedulers import CosineLrScheduler
 from torch import nn
 
-from data import DatasetAdaptor, load_cars_df
+from example.data import DatasetAdaptor, load_cars_df
 from yolov7.mosaic import MosaicMixupDataset
-from calculate_map import CalculateMetricsCallback
+from yolov7.evaluation import CalculateMetricsCallback
 from yolov7 import create_yolov7_model
 from yolov7.dataset import (
     create_base_transforms,

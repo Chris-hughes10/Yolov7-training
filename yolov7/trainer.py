@@ -6,6 +6,8 @@ from pytorch_accelerated.callbacks import TrainerCallback
 import pandas as pd
 from torch import Tensor
 
+from yolov7.models.yolo import process_yolov7_outputs
+
 
 class DisableAugmentationCallback(TrainerCallback):
     def __init__(self, no_aug_epochs):
@@ -76,7 +78,7 @@ class Yolov7Trainer(Trainer):
             model_outputs = self.model(images)
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
-            preds = self.model.process_outputs(model_outputs)
+            preds = process_yolov7_outputs(model_outputs)
 
             nms_preds = []
 
@@ -92,13 +94,13 @@ class Yolov7Trainer(Trainer):
             preds = nms_preds
 
         formatted_predictions = (
-            self.get_formatted_preds(image_idxs, preds).detach().cpu()
+            self.get_formatted_preds(image_idxs, preds)
         )
         formatted_targets = self.get_formatted_targets(labels, image_idxs, images)
 
         gathered_predictions = self.gather(
             formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE
-        )
+        ).detach().cpu()
         gathered_targets = (
             self.gather(formatted_targets, padding_value=self.YOLO7_PADDING_VALUE)
             .detach()

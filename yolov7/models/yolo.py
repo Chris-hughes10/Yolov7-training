@@ -9,10 +9,10 @@ from torch import nn
 
 from yolov7.anchors import check_anchor_order
 from yolov7.migrated.models.common import RepConv
+from yolov7.models.config_builder import create_model_from_config
 from yolov7.models.core.detection_heads import Detect, IDetect, IAuxDetect
 from yolov7.models.core.layer_operations import fuse_conv_and_bn
 from yolov7.models.core.layers import Conv
-from yolov7.models.model_factory import create_model_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class Yolov7Model(nn.Module):
     def __init__(self, model_config):
         super().__init__()
         self.config = model_config
-        self.num_channels = self.config["ch"]
+        self.num_channels = self.config["num_channels"]
         self.nc = self.config["nc"]
         self.stride = None
         self.traced = False
@@ -97,59 +97,59 @@ class Yolov7Model(nn.Module):
                 m.forward = m.fuseforward
         return self
 
-    @staticmethod
-    def process_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
-        model_outputs = model_outputs[0]
-        num_classes = model_outputs.shape[2] - 5
 
-        outputs = [torch.zeros((0, 6), device=model_outputs.device)] * model_outputs.shape[
-            0
-        ]
+def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
+    model_outputs = model_outputs[0]
+    num_classes = model_outputs.shape[2] - 5
 
-        for image_idx, detections_for_image in enumerate(
-                model_outputs
-        ):  # image index, image inference
+    outputs = [torch.zeros((0, 6), device=model_outputs.device)] * model_outputs.shape[
+        0
+    ]
 
-            # filter by confidence
+    for image_idx, detections_for_image in enumerate(
+            model_outputs
+    ):  # image index, image inference
+
+        # filter by confidence
+        detections_for_image = detections_for_image[
+            detections_for_image[:, 4] >= conf_thres
+            ]
+
+        # If none remain process next image
+        if not detections_for_image.shape[0]:
+            continue
+
+        if num_classes == 1:
+            detections_for_image[:, 5:] = detections_for_image[
+                                          :, 4:5
+                                          ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
+            # so there is no need to multiply.
+        else:
+            detections_for_image[:, 5:] *= detections_for_image[
+                                           :, 4:5
+                                           ]  # conf = obj_conf * cls_conf
+
+        # Box (center x, center y, width, height) to (x1, y1, x2, y2)
+        box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
+
+        # best class only
+        # j, most confident class index
+        conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
+
+        # filter by class confidence
+        detections_for_image = torch.cat((box, conf, class_idx), 1)[
+            conf.view(-1) > conf_thres
+            ]
+
+        # Check shape
+        n = detections_for_image.shape[0]  # number of boxes
+        if not n:  # no boxes
+            continue
+        elif n > max_detections:  # excess boxes
             detections_for_image = detections_for_image[
-                detections_for_image[:, 4] >= conf_thres
-                ]
+                detections_for_image[:, 4].argsort(descending=True)[:max_detections]
+            ]  # sort by confidence
 
-            # If none remain process next image
-            if not detections_for_image.shape[0]:
-                continue
+        outputs[image_idx] = detections_for_image
 
-            if num_classes == 1:
-                detections_for_image[:, 5:] = detections_for_image[
-                                              :, 4:5
-                                              ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
-                # so there is no need to multiply.
-            else:
-                detections_for_image[:, 5:] *= detections_for_image[
-                                               :, 4:5
-                                               ]  # conf = obj_conf * cls_conf
-
-            # Box (center x, center y, width, height) to (x1, y1, x2, y2)
-            box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
-
-            # best class only
-            # j, most confident class index
-            conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
-
-            # filter by class confidence
-            detections_for_image = torch.cat((box, conf, class_idx), 1)[
-                conf.view(-1) > conf_thres
-                ]
-
-            # Check shape
-            n = detections_for_image.shape[0]  # number of boxes
-            if not n:  # no boxes
-                continue
-            elif n > max_detections:  # excess boxes
-                detections_for_image = detections_for_image[
-                    detections_for_image[:, 4].argsort(descending=True)[:max_detections]
-                ]  # sort by confidence
-
-            outputs[image_idx] = detections_for_image
-
-        return outputs
+    return outputs

@@ -1,3 +1,5 @@
 .idea/*
 *.iml
 *.pyc
+/model_configs/
+/coco_dataset/

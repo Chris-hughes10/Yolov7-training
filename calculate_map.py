@@ -10,6 +10,12 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
 
+def coco80_to_coco91_class():  # converts 80-index (val2014) to 91-index (paper)
+    # https://tech.amikelive.com/node-718/what-object-categories-labels-are-in-coco-dataset/
+    x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34,
+         35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+         64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
+    return x
 
 XMIN_COL = "xmin"
 YMIN_COL = "ymin"
@@ -48,7 +54,7 @@ class COCOMeanAveragePrecision:
     # Maximum number of predictions we account for for each image.
     MAX_PREDS = 100
 
-    def __init__(self, foreground_threshold: float):
+    def __init__(self, foreground_threshold: float = None):
         self.foreground_threshold = foreground_threshold
 
     def __call__(
@@ -65,11 +71,12 @@ class COCOMeanAveragePrecision:
             return -1
         targets, preds = self._format_inputs(targets_df, preds_df, image_ids)
         # Silence all the garbage prints that cocotools spits out
-        with silencer():
-            coco_eval = self._build_coco_eval(targets, preds)
-            coco_eval.evaluate()
-            coco_eval.accumulate()
-            map = self._compute(coco_eval)
+        # with silencer():
+        coco_eval = self._build_coco_eval(targets, preds)
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+        map = self._compute(coco_eval)
         return map
 
     def _format_inputs(self, targets_df, preds_df, image_ids):
@@ -93,12 +100,13 @@ class COCOMeanAveragePrecision:
         box_df[BOX_HEIGHT_COL] = box_df[YMAX_COL] - box_df[YMIN_COL]
 
         ann_records = json.loads(box_df.to_json(orient="records"))
+        # lookup = coco80_to_coco91_class()
 
         formatted = [
             {
                 "id": i,
                 "image_id": r[IMAGE_ID_COL],
-                "category_id": r[CLASS_ID_COL],
+                "category_id": int(r[CLASS_ID_COL]),
                 "bbox": [r[XMIN_COL], r[YMIN_COL], r[BOX_WIDTH_COL], r[BOX_HEIGHT_COL]],
                 "iscrowd": False,
                 "area": r[BOX_WIDTH_COL] * r[BOX_HEIGHT_COL],
@@ -119,13 +127,15 @@ class COCOMeanAveragePrecision:
         coco_targets.createIndex()
         coco_preds = coco_targets.loadRes(preds)
         coco_eval = COCOeval(cocoGt=coco_targets, cocoDt=coco_preds, iouType="bbox")
-        coco_eval.params.iouThrs = np.array(
-            [self.foreground_threshold]
-        )  # Single IoU threshold
-        coco_eval.params.areaRng = np.array([self.AREA_RANGE])
-        coco_eval.params.areaRngLbl = [self.AREA_RANGE_LABEL]
-        # Single maximum number of predictions to account for
-        coco_eval.params.maxDets = np.array([self.MAX_PREDS])
+
+        if self.foreground_threshold is not None:
+            coco_eval.params.iouThrs = np.array(
+                [self.foreground_threshold]
+            )  # Single IoU threshold
+            coco_eval.params.areaRng = np.array([self.AREA_RANGE])
+            coco_eval.params.areaRngLbl = [self.AREA_RANGE_LABEL]
+            # Single maximum number of predictions to account for
+            coco_eval.params.maxDets = np.array([self.MAX_PREDS])
         return coco_eval
 
     def _compute(self, coco_eval):
@@ -150,8 +160,8 @@ class COCOMeanAveragePrecision:
 
 
 class CalculateMetricsCallback(TrainerCallback):
-    def __init__(self):
-        self.evaulator = COCOMeanAveragePrecision(0.3)
+    def __init__(self, iou_threshold=None):
+        self.evaulator = COCOMeanAveragePrecision(iou_threshold)
         self.ground_truths = []
         self.eval_predictions = []
         self.image_ids = set()

@@ -1,15 +1,6 @@
-import math
-
 import torch
 from pytorch_accelerated.utils import local_process_zero_first
-from torch import nn
 
-from yolov7.models.core.detection_heads import IDetect, Detect, IAuxDetect
-from yolov7.models.core.initialization import (
-    initialize_weights,
-    initialize_biases,
-    initialize_aux_biases,
-)
 from yolov7.models.model_configs import get_yolov7_config
 from yolov7.models.yolo import Yolov7Model
 from yolov7.utils import intersect_dicts
@@ -44,15 +35,4 @@ def create_yolov7_model(
         except Exception as e:
             print(f'Unable to load pretrained model weights from {state_dict_path}')
             print(e)
-
-    else:
-        initialize_weights(model)
-
-        detection_head = model.model[-1]
-
-        if config["aux_detection"]:
-            initialize_aux_biases(detection_head)
-        else:
-            initialize_biases(detection_head)
-
     return model

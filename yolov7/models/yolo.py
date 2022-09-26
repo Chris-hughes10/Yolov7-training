@@ -83,20 +83,6 @@ class Yolov7Model(nn.Module):
             )  # save output
         return x
 
-    def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
-        print("Fusing layers... ")
-        for m in self.model.modules():
-            if isinstance(m, RepConv):
-                m.fuse_repvgg_block()
-            elif type(m) is Conv and hasattr(m, "bn"):
-                m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
-                delattr(m, "bn")  # remove batchnorm
-                m.forward = m.fuseforward  # update forward
-            elif isinstance(m, (IDetect, IAuxDetect)):
-                m.fuse()
-                m.forward = m.fuseforward
-        return self
-
 
 def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
     model_outputs = model_outputs[0]

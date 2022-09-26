@@ -3,9 +3,6 @@ import torchvision.ops
 from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 
-import pandas as pd
-from torch import Tensor
-
 from yolov7.models.yolo import process_yolov7_outputs
 
 
@@ -32,14 +29,11 @@ class Yolov7Trainer(Trainer):
         eval_loss_func,
         optimizer,
         callbacks,
-        eval_image_idx_to_id_lookup,
     ):
         super().__init__(
             model=model, loss_func=loss_func, optimizer=optimizer, callbacks=callbacks
         )
         self.eval_loss_func = eval_loss_func
-        self.eval_predictions = []
-        self.eval_image_idx_to_id_lookup = eval_image_idx_to_id_lookup
 
     def training_run_start(self):
         self.loss_func.BCEcls.to(self.device)
@@ -76,9 +70,12 @@ class Yolov7Trainer(Trainer):
         with torch.no_grad():
             images, labels, image_idxs = batch[0], batch[1], batch[2]
             model_outputs = self.model(images)
+
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
-            preds = process_yolov7_outputs(model_outputs)
+            preds = process_yolov7_outputs(model_outputs, conf_thres=0.001, max_detections=300000)
+            # show_image(images[0].permute((1, 2, 0)).detach().cpu(), formatted_predictions[formatted_predictions[:, -1] == 0][:, :4].detach().cpu().tolist())
+
 
             nms_preds = []
 
@@ -87,7 +84,7 @@ class Yolov7Trainer(Trainer):
                     boxes=pred[:, :4],
                     scores=pred[:, 4],
                     idxs=pred[:, 5],
-                    iou_threshold=0.1,
+                    iou_threshold=0.6,
                 )
                 nms_preds.append(pred[nms_idx])
 

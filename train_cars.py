@@ -1,16 +1,14 @@
 import os
 from pathlib import Path
-import random
 
 import torch
 from pytorch_accelerated import notebook_launcher
 from pytorch_accelerated.callbacks import get_default_callbacks
 from pytorch_accelerated.schedulers import CosineLrScheduler
 from torch import nn
-from torch.utils.data import Subset
 
 from data import DatasetAdaptor, load_cars_df
-from datasets import MosaicMixupDataset
+from yolov7.mosaic import MosaicMixupDataset
 from calculate_map import CalculateMetricsCallback
 from yolov7 import create_yolov7_model
 from yolov7.dataset import (

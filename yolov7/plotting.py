@@ -82,7 +82,7 @@ draw_functions = {
 }
 
 
-def show_image(image, bboxes=None, bbox_format="pascal"):
+def annotate_image(image, bboxes=None, bbox_format="pascal"):
     draw_bboxes_fn = draw_functions[bbox_format]
 
     fig, ax = plt.subplots(1, figsize=(10, 10))
@@ -91,4 +91,9 @@ def show_image(image, bboxes=None, bbox_format="pascal"):
     if bboxes:
         draw_bboxes_fn(ax, bboxes)
 
+    return fig
+
+
+def show_image(image, bboxes=None, bbox_format="pascal"):
+    fig = annotate_image(image, bboxes, bbox_format)
     plt.show()

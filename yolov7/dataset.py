@@ -7,10 +7,15 @@ import albumentations as A
 
 
 def yolov7_collate_fn(batch):
-    images, labels, indices = zip(*batch)  # transposed
+    images, labels, indices, image_sizes = zip(*batch)
     for i, l in enumerate(labels):
         l[:, 0] = i  # add target image index for build_targets() in loss fn
-    return torch.stack(images, 0), torch.cat(labels, 0), torch.stack(indices, 0)
+    return (
+        torch.stack(images, 0),
+        torch.cat(labels, 0),
+        torch.stack(indices, 0),
+        torch.stack(image_sizes, 0),
+    )
 
 
 def create_base_transforms(target_image_size):
@@ -31,6 +36,7 @@ def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=Fa
             border_mode=0,
             value=(114, 114, 114),
         ),
+        # A.Resize(640, 640)
     ]
 
     if training:
@@ -69,6 +75,7 @@ class Yolov7Dataset(Dataset):
 
     def __getitem__(self, index):
         image, boxes, classes, index = self.load_from_dataset(index)
+        original_image_size = image.shape[:2]
 
         if self.transforms is not None:
             transformed = self.transforms(image=image, bboxes=boxes, labels=classes)
@@ -103,4 +110,5 @@ class Yolov7Dataset(Dataset):
             torch.as_tensor(image.transpose(2, 0, 1), dtype=torch.float32),
             labels_out,
             torch.as_tensor(index),
+            torch.as_tensor(original_image_size),
         )

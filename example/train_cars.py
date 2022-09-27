@@ -87,7 +87,6 @@ def main():
         optimizer=optimizer,
         loss_func=loss_func,
         eval_loss_func=create_yolov7_loss(model, ota_loss=False),
-        eval_image_idx_to_id_lookup=eval_ds.image_idx_to_image_id,
         callbacks=[
             CalculateMetricsCallback(),
             *get_default_callbacks(progress_bar=True),

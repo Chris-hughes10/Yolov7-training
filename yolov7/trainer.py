@@ -3,7 +3,7 @@ import torchvision.ops
 from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 
-from yolov7.models.yolo import process_yolov7_outputs
+from yolov7.models.yolo import process_yolov7_outputs, scale_bboxes
 
 
 class DisableAugmentationCallback(TrainerCallback):
@@ -67,15 +67,29 @@ class Yolov7Trainer(Trainer):
 
     def calculate_eval_batch_loss(self, batch) -> dict:
         with torch.no_grad():
-            images, labels, image_idxs = batch[0], batch[1], batch[2]
+            images, labels, image_idxs, original_image_sizes = (
+                batch[0],
+                batch[1],
+                batch[2],
+                batch[3].cpu(),
+            )
+
+
+
+
             model_outputs = self.model(images)
 
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
             preds = process_yolov7_outputs(
-                model_outputs, conf_thres=0.001, max_detections=300000
+                model_outputs,
+                conf_thres=0.001,
+                max_detections=300000,
             )
             # show_image(images[0].permute((1, 2, 0)).detach().cpu(), formatted_predictions[formatted_predictions[:, -1] == 0][:, :4].detach().cpu().tolist())
+            resized_image_sizes = torch.as_tensor(images.shape[2:], device=original_image_sizes.device)[None].repeat(
+                len(inference_outputs), 1
+            )
 
             nms_preds = []
 
@@ -90,8 +104,8 @@ class Yolov7Trainer(Trainer):
 
             preds = nms_preds
 
-        formatted_predictions = self.get_formatted_preds(image_idxs, preds)
-        formatted_targets = self.get_formatted_targets(labels, image_idxs, images)
+        formatted_predictions = self.get_formatted_preds(image_idxs, preds, original_image_sizes, resized_image_sizes)
+        formatted_targets = self.get_formatted_targets(labels, image_idxs, images, original_image_sizes, resized_image_sizes)
 
         gathered_predictions = (
             self.gather(formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE)
@@ -112,14 +126,16 @@ class Yolov7Trainer(Trainer):
             "batch_size": images.size(0),
         }
 
-    def get_formatted_preds(self, image_idxs, preds):
+    def get_formatted_preds(self, image_idxs, preds, original_image_sizes, resized_image_sizes):
         formatted_preds = []
-        for image_idx, image_preds in zip(image_idxs, preds):
+        for i, (image_idx, image_preds) in enumerate(zip(image_idxs, preds)):
             # x1, y1, x2, y2, score, class_id, image_idx
             formatted_preds.append(
                 torch.cat(
                     (
-                        image_preds,
+                        scale_bboxes(image_preds[:, :4], resized_hw=resized_image_sizes[i], original_hw=original_image_sizes[i], is_padded=True),
+                        image_preds[:, 4:],
+                        # rescale here
                         image_idx.repeat(image_preds.shape[0])[None].T,
                     ),
                     1,
@@ -136,7 +152,7 @@ class Yolov7Trainer(Trainer):
 
         return stacked_preds
 
-    def get_formatted_targets(self, labels, image_idxs, images):
+    def get_formatted_targets(self, labels, image_idxs, images, original_image_sizes, resized_image_sizes):
         formatted_targets = []
         for im_i, image_idx in enumerate(image_idxs):
             image_labels = labels[labels[:, 0] == im_i][:, 1:].clone()
@@ -151,7 +167,7 @@ class Yolov7Trainer(Trainer):
                 # cx, cy, w, h, class_id, image_idx
                 torch.cat(
                     (
-                        xyxy_labels,
+                        scale_bboxes(xyxy_labels, resized_hw=resized_image_sizes[im_i], original_hw=original_image_sizes[im_i], is_padded=True), # rescale here
                         image_labels[:, 0][None].T,
                         image_idx.repeat(image_labels.shape[0])[None].T,
                     ),

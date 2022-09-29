@@ -1,4 +1,4 @@
-from yolov7.loss import ComputeYolov7Loss, ComputeYolov7LossOTA
+from yolov7.loss import ComputeYolov7Loss, ComputeYolov7LossOTA, ComputeYolov7LossAuxOTA
 from yolov7.migrated.loss import ComputeLossAuxOTA, ComputeLossOTA, ComputeLoss
 
 
@@ -31,7 +31,7 @@ def create_yolov7_loss(
     model.gr = 1.0  # iou loss ratio (obj_loss = 1.0 or iou)
 
     if aux_loss and ota_loss:
-        loss_fn = ComputeLossAuxOTA(model)
+        loss_fn = ComputeYolov7LossAuxOTA(model)
     elif ota_loss and not aux_loss:
         loss_fn = ComputeYolov7LossOTA(model)
     else:

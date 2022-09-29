@@ -9,6 +9,8 @@ import torch
 
 from yolov7.loss_factory import create_yolov7_loss, create_yolov7_loss_orig
 
+# Ensures seeds are set to remove randomness
+import pytorch_accelerated
 
 def main():
     data_path = "./cars_dataset"
@@ -27,7 +29,7 @@ def main():
         eval_ds, create_yolov7_transforms(training=False, image_size=(640, 640))
     )
 
-    dl = DataLoader(eval_yds, collate_fn=yolov7_collate_fn, batch_size=2)
+    dl = DataLoader(eval_yds, collate_fn=yolov7_collate_fn, batch_size=2, shuffle=False)
 
     model = create_yolov7_model(
         architecture="yolov7", num_classes=1, pretrained=True
@@ -35,8 +37,9 @@ def main():
 
     model.eval()
 
-    eval_loss_func_r = create_yolov7_loss(model, ota_loss=True, aux_loss=False)
-    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=False)
+    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=True)
+    eval_loss_func_r = create_yolov7_loss(model, ota_loss=True, aux_loss=True)
+    # eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=True)
     i = 0
 
     for batch in dl:
@@ -51,8 +54,13 @@ def main():
             model_outputs = model(images)
 
             inference_outputs, rpn_outputs = model_outputs
-            val_loss_r, loss_items_r = eval_loss_func_r(p=rpn_outputs, targets=labels, imgs=images)
             val_loss, loss_items = eval_loss_func(p=rpn_outputs, targets=labels, imgs=images)
+            val_loss_r, loss_items_r = eval_loss_func_r(p=rpn_outputs, targets=labels, imgs=images)
+            # import pickle
+            # loss_inputs = {"rpn_outputs": rpn_outputs, "labels": labels, "images": images}
+            # with open(f"batch{i}_loss_ota_inputs.pkl", "wb") as f:
+            #     pickle.dump(loss_inputs, f)
+
 
             assert val_loss_r == val_loss
             assert (loss_items_r == loss_items).all()

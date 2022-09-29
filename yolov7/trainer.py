@@ -57,7 +57,7 @@ class Yolov7Trainer(Trainer):
         images, labels = batch[0], batch[1]
 
         model_outputs = self.model(images)
-        loss, loss_items = self.loss_func(model_outputs, labels, images)
+        loss, loss_items = self.loss_func(p=model_outputs, targets=labels, imgs=images)
 
         return {
             "loss": loss,
@@ -80,7 +80,7 @@ class Yolov7Trainer(Trainer):
             model_outputs = self.model(images)
 
             inference_outputs, rpn_outputs = model_outputs
-            val_loss, loss_items = self.eval_loss_func(rpn_outputs, labels)
+            val_loss, loss_items = self.eval_loss_func(p=rpn_outputs, targets=labels)
             preds = process_yolov7_outputs(
                 model_outputs,
                 conf_thres=0.001,

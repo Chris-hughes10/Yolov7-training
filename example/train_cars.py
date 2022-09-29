@@ -22,7 +22,8 @@ from yolov7.trainer import Yolov7Trainer
 
 
 def main():
-    data_path = "/home/chris/Downloads/data"
+    # data_path = "/home/chris/Downloads/data"
+    data_path = r"C:\Users\hughesc\Documents\data\cars\data"
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
@@ -80,7 +81,8 @@ def main():
 
     cooldown_epochs = 5
 
-    batch_size = 8
+    # batch_size = 8
+    batch_size = 2
 
     trainer = Yolov7Trainer(
         model=model,
@@ -124,4 +126,5 @@ def main():
 
 if __name__ == "__main__":
     os.environ["mixed_precision"] = "fp16"
-    notebook_launcher(main, num_processes=2)
+    main()
+    # notebook_launcher(main, num_processes=2)

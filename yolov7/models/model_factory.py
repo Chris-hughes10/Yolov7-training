@@ -1,5 +1,5 @@
 import torch
-from pytorch_accelerated.utils import local_process_zero_first
+# from pytorch_accelerated.utils import local_process_zero_first
 
 from yolov7.models.model_configs import get_yolov7_config
 from yolov7.models.yolo import Yolov7Model
@@ -8,7 +8,7 @@ from yolov7.utils import intersect_dicts
 MODEL_CONFIGS = {"yolov7": get_yolov7_config}
 
 
-@local_process_zero_first
+# @local_process_zero_first
 def create_yolov7_model(
     architecture, num_classes=80, anchors=None, num_channels=3, pretrained=True
 ):

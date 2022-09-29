@@ -3,6 +3,7 @@ import os
 import numpy as np
 import torch
 import torchvision
+from pytorch_accelerated import notebook_launcher
 from pytorch_accelerated.callbacks import get_default_callbacks
 from torchvision.datasets.coco import CocoDetection
 
@@ -164,5 +165,5 @@ def main():
 if __name__ == "__main__":
     os.environ["mixed_precision"] = "fp16"
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    # notebook_launcher(main, num_processes=2)
-    main()
+    notebook_launcher(main, num_processes=2)
+    # main()

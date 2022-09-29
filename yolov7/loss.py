@@ -1,5 +1,6 @@
 # copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/loss.py
 # Loss functions
+import math
 
 import torch
 import torch.nn as nn
@@ -245,7 +246,8 @@ class ComputeYolov7Loss:
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
-        na, nt = self.na, targets.shape[0]  # number of anchors, targets
+        na = self.na #number of anchors
+        nt = targets.shape[0] # , targets
         tcls, tbox, indices, anch = [], [], [], []
         gain = torch.ones(
             7, device=targets.device
@@ -318,13 +320,13 @@ class ComputeYolov7Loss:
 
 class ComputeYolov7LossOTA(ComputeYolov7Loss):
 
-    def __int__(self, model, autobalance=False):
+    def __init__(self, model, autobalance=False):
         super().__init__(model, autobalance)
-
         det = (
             model.module.model[-1] if is_parallel(model) else model.model[-1]
         )
         self.stride = det.stride
+
 
     def compute_losses(self, p, targets, imgs, lcls, lbox, lobj, device, **kwargs):
         bs, as_, gjs, gis, targets, anchors = self.build_targets(p, targets, imgs)
@@ -905,6 +907,9 @@ class ComputeLossOTA:
                 )
 
         ###
+
+        # tobj
+
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
         lbox *= self.hyp["box"]

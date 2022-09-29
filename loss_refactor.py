@@ -11,7 +11,8 @@ from yolov7.loss_factory import create_yolov7_loss, create_yolov7_loss_orig
 
 
 def main():
-    data_path = r"C:\Users\hughesc\Documents\data\cars\data"
+    data_path = "/home/chris/Downloads/data"
+    # data_path = r"C:\Users\hughesc\Documents\data\cars\data"
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
@@ -34,8 +35,8 @@ def main():
 
     model.eval()
 
-    eval_loss_func_r = create_yolov7_loss(model, ota_loss=False, aux_loss=False)
-    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=False, aux_loss=False)
+    eval_loss_func_r = create_yolov7_loss(model, ota_loss=True, aux_loss=False)
+    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=False)
     i = 0
 
     for batch in dl:
@@ -50,13 +51,18 @@ def main():
             model_outputs = model(images)
 
             inference_outputs, rpn_outputs = model_outputs
-            val_loss_r, loss_items_r = eval_loss_func_r(p=rpn_outputs, targets=labels)
-            val_loss, loss_items = eval_loss_func(p=rpn_outputs, targets=labels)
+            val_loss_r, loss_items_r = eval_loss_func_r(p=rpn_outputs, targets=labels, imgs=images)
+            val_loss, loss_items = eval_loss_func(p=rpn_outputs, targets=labels, imgs=images)
 
             assert val_loss_r == val_loss
-            assert loss_items_r == loss_items
+            assert (loss_items_r == loss_items).all()
 
             i +=1
+
+            if i == 10:
+                break
+
+    print('Done')
 
 if __name__ == '__main__':
     main()

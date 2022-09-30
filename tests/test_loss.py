@@ -1,7 +1,11 @@
 """Tests to use for refactoring the loss. Inputs and outputs from cars ds run."""
 import pickle
+
+import pytest
 import torch
+
 from yolov7.loss_factory import create_yolov7_loss
+
 
 class FakeDetector:
     """Class that has needed attributes by the loss to work but is not the real thing
@@ -24,20 +28,7 @@ class FakeDetector:
                             [[6.8125, 9.60938],
                              [11.54688, 5.9375],
                              [14.45312, 12.375]]])
-"""
-Loss values
-0, core, 3.98261, tensor([0.04894, 1.93461, 0.00775, 1.99130])
-1, core, 3.98727, tensor([0.05133, 1.93455, 0.00776, 1.99363])
-2, core, 3.99030, tensor([0.05282, 1.93455, 0.00777, 1.99515])
 
-0, ota, 3.94623, tensor([0.03071, 1.93461, 0.00779, 1.97312])
-1, ota, 3.94977, tensor([0.03254, 1.93455, 0.00780, 1.97489])
-2, ota, 3.96024, tensor([0.03778, 1.93456, 0.00778, 1.98012])
-
-0, ota aux, 5.09125, tensor([0.04916, 2.48746, 0.00900, 2.54563])
-1, ota aux, 5.09861, tensor([0.05321, 2.48767, 0.00843, 2.54930])
-2, ota aux, 5.10369, tensor([0.05612, 2.48728, 0.00844, 2.55184])
-"""
 
 class FakeModel:
     """Class that has the attributes needed by the loss to work but is not really a model
@@ -52,20 +43,49 @@ class FakeModel:
             device = torch.device("cpu")
         return iter([Dummy()])
 
-def test_loss_batch_1():
+
+@pytest.fixture(scope="module")
+def batch_loss_inputs():
+    "Load pkl files only once per execution"
+    result = {}
+    for i in range(3):
+        with open(f"./tests/batch{i}_loss_inputs.pkl", "rb") as f:
+            result[i] = pickle.load(f)
+    return result
+
+# Loss values were obtained by running e6e model through first 2-sample 3 batches of cars dataset
+@pytest.mark.parametrize(
+    "batch, ota_loss, aux_loss, expected_loss, expected_loss_items",
+    [
+        # core loss
+        (0, False, False, 3.98261, [0.04894, 1.93461, 0.00775, 1.99130]),
+        (1, False, False, 3.98727, [0.05133, 1.93455, 0.00776, 1.99363]),
+        (2, False, False, 3.99030, [0.05282, 1.93455, 0.00777, 1.99515]),
+        # ota loss
+        (0, True, False, 3.94623, [0.03071, 1.93461, 0.00779, 1.97312]),
+        (1, True, False, 3.94977, [0.03254, 1.93455, 0.00780, 1.97489]),
+        (2, True, False, 3.96024, [0.03778, 1.93456, 0.00778, 1.98012]),
+        # aux ota loss
+        (0, True, True, 5.09125, [0.04916, 2.48746, 0.00900, 2.54563]),
+        (1, True, True, 5.09861, [0.05321, 2.48767, 0.00843, 2.54930]),
+        (2, True, True, 5.10369, [0.05612, 2.48728, 0.00844, 2.55184]),
+    ]
+)
+def test_loss(batch, ota_loss, aux_loss, expected_loss, expected_loss_items, batch_loss_inputs):
     model = FakeModel()
-    loss_func = create_yolov7_loss(model, ota_loss=True, aux_loss=False)
+    loss_func = create_yolov7_loss(model, ota_loss=ota_loss, aux_loss=aux_loss)
+    expected_loss = torch.tensor([expected_loss])
+    expected_loss_items = torch.tensor(expected_loss_items)
 
-    with open("./tests/batch1inputs.pkl", "rb") as f:
-        inputs = pickle.load(f)
-    rpn_outputs = inputs["rpn_outputs"]
-    labels = inputs["labels"]
-    images = inputs["images"]
 
-    expected_loss = torch.tensor([5.40037])
-    expected_loss_items = torch.tensor([0.07192, 2.62826, 0.00000, 2.70018])
+    model_outputs = batch_loss_inputs[batch]["model_outputs"]
+    labels = batch_loss_inputs[batch]["labels"]
+    images = batch_loss_inputs[batch]["images"]
+    if not aux_loss:
+        # Only the aux loss requires the aux head outputs, for the rest we strip them
+         model_outputs = model_outputs[:model.model[-1].nl]
 
-    loss, loss_items = loss_func(p=rpn_outputs, targets=labels, imgs=images)
+    loss, loss_items = loss_func(p=model_outputs, targets=labels, imgs=images)
 
     assert (loss.round(decimals=5) == expected_loss.round(decimals=5)).all().item()
     assert (loss_items.round(decimals=5) == expected_loss_items.round(decimals=5)).all().item()

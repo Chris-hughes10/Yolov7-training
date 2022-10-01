@@ -7,6 +7,7 @@ import torch
 from yolov7.loss_factory import create_yolov7_loss
 
 
+
 class FakeDetector:
     """Class that has needed attributes by the loss to work but is not the real thing
 
@@ -66,7 +67,7 @@ def batch_loss_inputs():
         (1, True, False, 3.94977, [0.03254, 1.93455, 0.00780, 1.97489]),
         (2, True, False, 3.96024, [0.03778, 1.93456, 0.00778, 1.98012]),
         # aux ota loss
-        (0, True, True, 5.09125, [0.04916, 2.48746, 0.00900, 2.54563]),
+        (0, True, True, 5.09125, [0.04916, 2.48746, 0.00900, 2.54562]),
         (1, True, True, 5.09861, [0.05321, 2.48767, 0.00843, 2.54930]),
         (2, True, True, 5.10369, [0.05612, 2.48728, 0.00844, 2.55184]),
     ]

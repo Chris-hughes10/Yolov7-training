@@ -10,6 +10,94 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
 
+def coco80_to_coco91_lookup():
+    return {
+        i: v
+        for i, v in enumerate(
+            [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                27,
+                28,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                46,
+                47,
+                48,
+                49,
+                50,
+                51,
+                52,
+                53,
+                54,
+                55,
+                56,
+                57,
+                58,
+                59,
+                60,
+                61,
+                62,
+                63,
+                64,
+                65,
+                67,
+                70,
+                72,
+                73,
+                74,
+                75,
+                76,
+                77,
+                78,
+                79,
+                80,
+                81,
+                82,
+                84,
+                85,
+                86,
+                87,
+                88,
+                89,
+                90,
+            ]
+        )
+    }
 
 XMIN_COL = "xmin"
 YMIN_COL = "ymin"
@@ -74,24 +162,29 @@ class COCOMeanAveragePrecision:
         return map
 
     def _format_inputs(self, targets_df, preds_df, image_ids):
-        preds = self._format_box_df_for_cocotools(preds_df, is_preds=True)
+        preds = self.format_box_df_for_cocotools(preds_df, is_preds=True)
         # Targets are expected to carry extra information
-        target_anns = self._format_box_df_for_cocotools(targets_df)
+        target_anns = self.format_box_df_for_cocotools(targets_df)
         targets = {
             "images": [{"id": id_} for id_ in set(image_ids)],
             "categories": [{"id": cat} for cat in targets_df[CLASS_ID_COL].unique()],
             "annotations": target_anns,
         }
+
+        with open('targets_anns.json', 'w') as f:
+            json.dump(target_anns, f)
+
         return targets, preds
 
     @staticmethod
-    def _format_box_df_for_cocotools(
+    def format_box_df_for_cocotools(
         box_df: pd.DataFrame, is_preds: bool = False
     ) -> List[Dict]:
         # `box_df` is either a `targets_df` or a `preds_df`
         box_df = box_df.copy()  # Ensure no side effects
         box_df[BOX_WIDTH_COL] = box_df[XMAX_COL] - box_df[XMIN_COL]
         box_df[BOX_HEIGHT_COL] = box_df[YMAX_COL] - box_df[YMIN_COL]
+        box_df = box_df.sort_values([IMAGE_ID_COL, CLASS_ID_COL], ascending=[True, True])
 
         ann_records = json.loads(box_df.to_json(orient="records"))
         # lookup = coco80_to_coco91_class()
@@ -153,18 +246,17 @@ class COCOMeanAveragePrecision:
         return mean_s
 
 
-class CalculateMetricsCallback(TrainerCallback):
+class CalculateMetricsCallbackV2(TrainerCallback):
     def __init__(self, iou_threshold=None):
-        self.evaulator = COCOMeanAveragePrecision(iou_threshold)
-        self.ground_truths = []
+
+        self.evaluator = COCOMeanAveragePrecision(iou_threshold)
         self.eval_predictions = []
         self.image_ids = set()
 
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
         predictions = batch_output["predictions"]
-        targets = batch_output["targets"]
 
-        self.update(predictions, targets)
+        self.update(predictions)
 
     def remove_seen(self, labels):
         image_ids = labels[:, -1].tolist()
@@ -184,14 +276,8 @@ class CalculateMetricsCallback(TrainerCallback):
 
         return labels
 
-    def update(self, predictions, targets):
+    def update(self, predictions):
         filtered_predictions = self.remove_seen(predictions)
-        filtered_targets = self.remove_seen(targets)
-
-        if len(filtered_targets) > 0:
-            self.ground_truths.extend(filtered_targets.tolist())
-            updated_ids = filtered_targets[:, -1].unique().tolist()
-            self.image_ids.update(updated_ids)
 
         if len(filtered_predictions) > 0:
             self.eval_predictions.extend(filtered_predictions.tolist())
@@ -200,7 +286,6 @@ class CalculateMetricsCallback(TrainerCallback):
 
     def reset(self):
         self.image_ids = set()
-        self.ground_truths = []
         self.eval_predictions = []
 
     def on_eval_epoch_end(self, trainer, **kwargs):
@@ -208,15 +293,25 @@ class CalculateMetricsCallback(TrainerCallback):
             torch.as_tensor(self.eval_predictions),
             columns=["xmin", "ymin", "xmax", "ymax", "score", "class_id", "image_id"],
         )
-        targets_df = pd.DataFrame(
-            torch.as_tensor(self.ground_truths),
-            columns=["xmin", "ymin", "xmax", "ymax", "class_id", "image_id"],
-        )
 
-        map = self.evaulator(
-            targets_df=targets_df, preds_df=preds_df, image_ids=self.image_ids
-        )
+        convert_class_id_lookup = coco80_to_coco91_lookup()
 
-        trainer.run_history.update_metric(f"map", map)
+        preds_df['class_id'] = preds_df.class_id.map(convert_class_id_lookup)
+
+        preds_json = self.evaluator.format_box_df_for_cocotools(preds_df, is_preds=True)
+
+        with open('/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json') as f:
+            targets_json = json.load(f)
+
+        with open('preds.json', 'w') as f:
+            json.dump(preds_json, f)
+
+        coco_eval = self.evaluator._build_coco_eval(targets_json, preds_json)
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+
+
+        # trainer.run_history.update_metric(f"map", map)
 
         self.reset()

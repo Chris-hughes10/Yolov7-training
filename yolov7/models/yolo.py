@@ -84,7 +84,7 @@ class Yolov7Model(nn.Module):
         return x
 
 
-def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
+def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000, multi_label=True):
     model_outputs = model_outputs[0]
     num_classes = model_outputs.shape[2] - 5
 
@@ -118,14 +118,21 @@ def process_yolov7_outputs(model_outputs, conf_thres=0.2, max_detections=30000):
         # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
         box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
 
-        # best class only
-        # j, most confident class index
-        conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
+        if multi_label:
+            # Detections matrix nx6 (xyxy, conf, cls)
+            # keep multiple labels per box
+            i, j = (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            detections_for_image = torch.cat((box[i], detections_for_image[i, j + 5, None], j[:, None].float()), 1)
 
-        # filter by class confidence
-        detections_for_image = torch.cat((box, conf, class_idx), 1)[
-            conf.view(-1) > conf_thres
-        ]
+        else:
+            # best class only
+            # j, most confident class index
+            conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
+
+            # filter by class confidence
+            detections_for_image = torch.cat((box, conf, class_idx), 1)[
+                conf.view(-1) > conf_thres
+            ]
 
         # Check shape
         n = detections_for_image.shape[0]  # number of boxes

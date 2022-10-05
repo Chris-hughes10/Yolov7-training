@@ -233,6 +233,8 @@ class ComputeYolov7Loss:
         tobj = self.compute_losses(p=p, targets=targets, lcls=lcls, lbox=lbox,
                                    lobj=lobj, device=device, **kwargs)
 
+        self.tobj = tobj
+
         ###
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]

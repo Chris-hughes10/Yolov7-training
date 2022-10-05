@@ -1,5 +1,6 @@
 import torch
 import torchvision.ops
+from PIL import Image
 from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 
@@ -73,11 +74,10 @@ class Yolov7Trainer(Trainer):
                 batch[2],
                 batch[3].cpu(),
             )
-
-
-
-
             model_outputs = self.model(images)
+
+            if 7386 in image_idxs:
+                print('break')
 
             inference_outputs, rpn_outputs = model_outputs
             val_loss, loss_items = self.eval_loss_func(p=rpn_outputs, targets=labels)
@@ -98,31 +98,32 @@ class Yolov7Trainer(Trainer):
                     boxes=pred[:, :4],
                     scores=pred[:, 4],
                     idxs=pred[:, 5],
-                    iou_threshold=0.6,
+                    iou_threshold=0.65,
                 )
+                # nms_preds.append(pred[nms_idx][:300])
                 nms_preds.append(pred[nms_idx])
 
             preds = nms_preds
 
         formatted_predictions = self.get_formatted_preds(image_idxs, preds, original_image_sizes, resized_image_sizes)
-        formatted_targets = self.get_formatted_targets(labels, image_idxs, images, original_image_sizes, resized_image_sizes)
+        # formatted_targets = self.get_formatted_targets(labels, image_idxs, images, original_image_sizes, resized_image_sizes)
 
         gathered_predictions = (
             self.gather(formatted_predictions, padding_value=self.YOLO7_PADDING_VALUE)
             .detach()
             .cpu()
         )
-        gathered_targets = (
-            self.gather(formatted_targets, padding_value=self.YOLO7_PADDING_VALUE)
-            .detach()
-            .cpu()
-        )
+        # gathered_targets = (
+        #     self.gather(formatted_targets, padding_value=self.YOLO7_PADDING_VALUE)
+        #     .detach()
+        #     .cpu()
+        # )
 
         return {
             "loss": val_loss,
             "model_outputs": model_outputs,
             "predictions": gathered_predictions,
-            "targets": gathered_targets,
+            # "targets": gathered_targets,
             "batch_size": images.size(0),
         }
 
@@ -133,6 +134,7 @@ class Yolov7Trainer(Trainer):
             formatted_preds.append(
                 torch.cat(
                     (
+                        # scale_bboxes(image_preds[:, :4], resized_hw=resized_image_sizes[i], original_hw=original_image_sizes[i], is_padded=False),
                         scale_bboxes(image_preds[:, :4], resized_hw=resized_image_sizes[i], original_hw=original_image_sizes[i], is_padded=True),
                         image_preds[:, 4:],
                         # rescale here
@@ -152,35 +154,35 @@ class Yolov7Trainer(Trainer):
 
         return stacked_preds
 
-    def get_formatted_targets(self, labels, image_idxs, images, original_image_sizes, resized_image_sizes):
-        formatted_targets = []
-        for im_i, image_idx in enumerate(image_idxs):
-            image_labels = labels[labels[:, 0] == im_i][:, 1:].clone()
-
-            # denormalize
-            image_labels[:, [1, 3]] = image_labels[:, [1, 3]] * images.shape[-2]
-            image_labels[:, [2, 4]] = image_labels[:, [2, 4]] * images.shape[-1]
-            xyxy_labels = torchvision.ops.box_convert(
-                image_labels[:, 1:], "cxcywh", "xyxy"
-            )
-            formatted_targets.append(
-                # cx, cy, w, h, class_id, image_idx
-                torch.cat(
-                    (
-                        scale_bboxes(xyxy_labels, resized_hw=resized_image_sizes[im_i], original_hw=original_image_sizes[im_i], is_padded=True), # rescale here
-                        image_labels[:, 0][None].T,
-                        image_idx.repeat(image_labels.shape[0])[None].T,
-                    ),
-                    1,
-                )
-            )
-
-        if not formatted_targets:
-            # create placeholder so that it can be gathered across processes
-            stacked_targets = torch.tensor(
-                [self.YOLO7_PADDING_VALUE] * 6, device=self.device
-            )[None]
-        else:
-            stacked_targets = torch.vstack(formatted_targets)
-
-        return stacked_targets
+    # def get_formatted_targets(self, labels, image_idxs, images, original_image_sizes, resized_image_sizes):
+    #     formatted_targets = []
+    #     for im_i, image_idx in enumerate(image_idxs):
+    #         image_labels = labels[labels[:, 0] == im_i][:, 1:].clone()
+    #
+    #         # denormalize
+    #         image_labels[:, [1, 3]] = image_labels[:, [1, 3]] * images.shape[-2]
+    #         image_labels[:, [2, 4]] = image_labels[:, [2, 4]] * images.shape[-1]
+    #         xyxy_labels = torchvision.ops.box_convert(
+    #             image_labels[:, 1:], "cxcywh", "xyxy"
+    #         )
+    #         formatted_targets.append(
+    #             # cx, cy, w, h, class_id, image_idx
+    #             torch.cat(
+    #                 (
+    #                     scale_bboxes(xyxy_labels, resized_hw=resized_image_sizes[im_i], original_hw=original_image_sizes[im_i], is_padded=True), # rescale here
+    #                     image_labels[:, 0][None].T,
+    #                     image_idx.repeat(image_labels.shape[0])[None].T,
+    #                 ),
+    #                 1,
+    #             )
+    #         )
+    #
+    #     if not formatted_targets:
+    #         # create placeholder so that it can be gathered across processes
+    #         stacked_targets = torch.tensor(
+    #             [self.YOLO7_PADDING_VALUE] * 6, device=self.device
+    #         )[None]
+    #     else:
+    #         stacked_targets = torch.vstack(formatted_targets)
+    #
+    #     return stacked_targets

@@ -66,13 +66,13 @@ class Shortcut(nn.Module):
 class Conv(nn.Module):
     # Standard convolution
     def __init__(
-        self, c1, c2, k=1, s=1, p=None, g=1, act=True
+        self, c1, c2, k=1, s=1, p=None, g=1, act=True, eps=1e-3, momentum=0.03,
     ):  # ch_in, ch_out, kernel, stride, padding, groups
-        super(Conv, self).__init__()
+        super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
-        self.bn = nn.BatchNorm2d(c2)
+        self.bn = nn.BatchNorm2d(c2, eps=eps, momentum=momentum)
         self.act = (
-            nn.SiLU()
+            nn.SiLU(inplace=True)
             if act is True
             else (act if isinstance(act, nn.Module) else nn.Identity())
         )

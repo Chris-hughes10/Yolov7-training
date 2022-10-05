@@ -11,10 +11,10 @@ MODEL_CONFIGS = {"yolov7": get_yolov7_config,
 
 @local_process_zero_first
 def create_yolov7_model(
-    architecture, num_classes=80, anchors=None, num_channels=3, pretrained=True
+    architecture, num_classes=80, anchors=None, num_channels=3, pretrained=True, training=True
 ):
     config = MODEL_CONFIGS[architecture](
-        num_classes=num_classes, anchors=anchors, num_channels=num_channels
+        num_classes=num_classes, anchors=anchors, num_channels=num_channels, training=training
     )
 
     model = Yolov7Model(model_config=config)

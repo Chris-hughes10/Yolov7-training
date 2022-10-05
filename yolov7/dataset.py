@@ -1,9 +1,12 @@
 import torch
+import torchvision
 from torch.utils.data import Dataset
 
 import numpy as np
 
 import albumentations as A
+
+import cv2
 
 
 def yolov7_collate_fn(batch):
@@ -70,18 +73,30 @@ class Yolov7Dataset(Dataset):
         return len(self.ds)
 
     def load_from_dataset(self, index):
-        image, boxes, classes, index = self.ds[index]
-        return image, boxes, classes, index
+        image, boxes, classes, index, shape = self.ds[index]
+        return image, boxes, classes, index, shape
 
     def __getitem__(self, index):
-        image, boxes, classes, index = self.load_from_dataset(index)
-        original_image_size = image.shape[:2]
+        image, boxes, classes, index, original_image_size = self.load_from_dataset(index)
+        # original_image_size = image.shape[:2]
+
+        h, w = original_image_size
 
         if self.transforms is not None:
             transformed = self.transforms(image=image, bboxes=boxes, labels=classes)
             image = transformed["image"]
             boxes = np.array(transformed["bboxes"])
             classes = np.array(transformed["labels"])
+
+        # image, ratio, pad = letterbox(image, 640, auto=False, scaleup=False)
+        #
+        #
+        #
+        # if boxes.size:  # normalized xywh to pixel xyxy format
+        #     boxes = convert_xyxy_to_cxcywh(boxes)
+        #     boxes[:, [1, 3]] /= image.shape[0]  # normalized height 0-1
+        #     boxes[:, [0, 2]] /= image.shape[1]  # normalized width 0-1
+        #     boxes = xywhn2xyxy(boxes, ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
         image = image / 255  # 0 - 1 range
 
@@ -91,7 +106,8 @@ class Yolov7Dataset(Dataset):
             boxes = boxes[valid_boxes]
             classes = classes[valid_boxes]
 
-            boxes = convert_xyxy_to_cxcywh(boxes)
+            boxes = torchvision.ops.box_convert(torch.as_tensor(boxes, dtype=torch.float32), 'xyxy', 'cxcywh')
+            # boxes = convert_xyxy_to_cxcywh(boxes)
             boxes[:, [1, 3]] /= image.shape[0]  # normalized height 0-1
             boxes[:, [0, 2]] /= image.shape[1]  # normalized width 0-1
             classes = np.expand_dims(classes, 1)
@@ -100,15 +116,18 @@ class Yolov7Dataset(Dataset):
                 (
                     torch.zeros((len(boxes), 1)),
                     torch.as_tensor(classes, dtype=torch.float32),
-                    torch.as_tensor(boxes, dtype=torch.float32),
+                    # torch.as_tensor(boxes, dtype=torch.float32),
+                    boxes
                 )
             )
         else:
             labels_out = torch.zeros((0, 6))
 
         return (
+            # torch.as_tensor(image.transpose(2, 0, 1), dtype=torch.uint8).float()/255,
             torch.as_tensor(image.transpose(2, 0, 1), dtype=torch.float32),
             labels_out,
+            # labels_out.round(decimals=2),
             torch.as_tensor(index),
             torch.as_tensor(original_image_size),
         )

@@ -1,7 +1,9 @@
 import contextlib
 import json
-from typing import Set, List, Dict
 import sys
+from pathlib import Path
+from typing import Set, List, Dict
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -9,95 +11,6 @@ import torch
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
-
-def coco80_to_coco91_lookup():
-    return {
-        i: v
-        for i, v in enumerate(
-            [
-                1,
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                19,
-                20,
-                21,
-                22,
-                23,
-                24,
-                25,
-                27,
-                28,
-                31,
-                32,
-                33,
-                34,
-                35,
-                36,
-                37,
-                38,
-                39,
-                40,
-                41,
-                42,
-                43,
-                44,
-                46,
-                47,
-                48,
-                49,
-                50,
-                51,
-                52,
-                53,
-                54,
-                55,
-                56,
-                57,
-                58,
-                59,
-                60,
-                61,
-                62,
-                63,
-                64,
-                65,
-                67,
-                70,
-                72,
-                73,
-                74,
-                75,
-                76,
-                77,
-                78,
-                79,
-                80,
-                81,
-                82,
-                84,
-                85,
-                86,
-                87,
-                88,
-                89,
-                90,
-            ]
-        )
-    }
 
 XMIN_COL = "xmin"
 YMIN_COL = "ymin"
@@ -115,6 +28,7 @@ class DummyFile(object):
         pass
 
 
+
 @contextlib.contextmanager
 def silencer():
     save_stdout = sys.stdout
@@ -122,25 +36,56 @@ def silencer():
     yield
     sys.stdout = save_stdout
 
+class Silencer:
+
+    def __init__(self):
+        self.save_stdout = sys.stdout
+
+    def start(self):
+        sys.stdout = MagicMock()
+        # sys.stdout = DummyFile()
+
+    def stop(self):
+        sys.stdout = self.save_stdout
+
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+
+
 
 class COCOMeanAveragePrecision:
     """Mean Average Precision for single IoU threshold based on pycocotools
 
-    :param foreground_threshold: IoU threshold for which we want to calculate mAP.
+    :param iou_threshold: IoU threshold for which we want to calculate mAP.
     """
 
     # Box area range is a concept needed for benchmarking models, we do not need that.
     # Thus, we pick one that can just fit any prediction.
-    AREA_RANGE = np.array([0**2, 1e5**2])
+    AREA_RANGE = np.array([0 ** 2, 1e5 ** 2])
     AREA_RANGE_LABEL = "all"
     # Maximum number of predictions we account for each image.
     MAX_PREDS = 100
 
-    def __init__(self, foreground_threshold: float = None):
-        self.foreground_threshold = foreground_threshold
+    def __init__(self, iou_threshold: float = None, verbose=False):
+        self.foreground_threshold = iou_threshold
+        self.verbose = verbose
+        self.silencer = Silencer()
 
     def __call__(
-        self, targets_df: pd.DataFrame, preds_df: pd.DataFrame, image_ids: Set[str]
+            self, targets_json: pd.DataFrame, preds_json
+    ) -> float:
+        """Calculate mAP from json files
+
+        """
+        mAP = self.compute(targets_json, preds_json)
+        return mAP
+
+    def compute_from_dfs(
+            self, targets_df: pd.DataFrame, preds_df: pd.DataFrame,
     ) -> float:
         """Calculate mAP
 
@@ -151,14 +96,14 @@ class COCOMeanAveragePrecision:
         if len(preds_df) == 0:
             # If there are no predictions (sometimes on error impact), return -1.
             return -1
+
+        image_ids = set(targets_df[IMAGE_ID_COL].unique())
+        image_ids.update(preds_df[IMAGE_ID_COL].unique())
+
         targets, preds = self._format_inputs(targets_df, preds_df, image_ids)
         # Silence all the garbage prints that cocotools spits out
         # with silencer():
-        coco_eval = self._build_coco_eval(targets, preds)
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
-        map = self._compute(coco_eval)
+        map = self.compute(targets, preds)
         return map
 
     def _format_inputs(self, targets_df, preds_df, image_ids):
@@ -171,23 +116,21 @@ class COCOMeanAveragePrecision:
             "annotations": target_anns,
         }
 
-        with open('targets_anns.json', 'w') as f:
-            json.dump(target_anns, f)
-
         return targets, preds
 
     @staticmethod
     def format_box_df_for_cocotools(
-        box_df: pd.DataFrame, is_preds: bool = False
+            box_df: pd.DataFrame, is_preds: bool = False
     ) -> List[Dict]:
         # `box_df` is either a `targets_df` or a `preds_df`
         box_df = box_df.copy()  # Ensure no side effects
         box_df[BOX_WIDTH_COL] = box_df[XMAX_COL] - box_df[XMIN_COL]
         box_df[BOX_HEIGHT_COL] = box_df[YMAX_COL] - box_df[YMIN_COL]
-        box_df = box_df.sort_values([IMAGE_ID_COL, CLASS_ID_COL], ascending=[True, True])
+        box_df = box_df.sort_values(
+            [IMAGE_ID_COL, CLASS_ID_COL], ascending=[True, True]
+        )
 
         ann_records = json.loads(box_df.to_json(orient="records"))
-        # lookup = coco80_to_coco91_class()
 
         formatted = [
             {
@@ -225,6 +168,30 @@ class COCOMeanAveragePrecision:
             coco_eval.params.maxDets = np.array([self.MAX_PREDS])
         return coco_eval
 
+    def compute(self, targets_json, preds_json):
+        if len(preds_json) == 0:
+            # If there are no predictions (sometimes on error impact), return -1.
+            return -1
+        # Silence all the garbage prints that cocotools spits out
+        # with silencer():
+
+        if not self.verbose:
+            self.silencer.start()
+
+        coco_eval = self._build_coco_eval(targets_json, preds_json)
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        if self.foreground_threshold is None:
+            coco_eval.summarize()
+            mAP = coco_eval.stats[0]
+        else:
+            mAP = self._compute(coco_eval)
+
+        if not self.verbose:
+            self.silencer.stop()
+
+        return mAP
+
     def _compute(self, coco_eval):
         """Actual computation of mAP; extracted from non-flexible `COCOeval.summarize` method."""
         p = coco_eval.params
@@ -246,10 +213,14 @@ class COCOMeanAveragePrecision:
         return mean_s
 
 
-class CalculateMetricsCallbackV2(TrainerCallback):
-    def __init__(self, iou_threshold=None):
+class CalculateMetricsCallback(TrainerCallback):
+    def __init__(self, targets_json, iou_threshold=None, save_predictions_output_dir_path=None, verbose=False):
 
         self.evaluator = COCOMeanAveragePrecision(iou_threshold)
+        self.targets_json = targets_json
+        self.verbose = verbose
+        self.save_predictions_path = Path(
+            save_predictions_output_dir_path) if save_predictions_output_dir_path is not None else None
         self.eval_predictions = []
         self.image_ids = set()
 
@@ -294,24 +265,17 @@ class CalculateMetricsCallbackV2(TrainerCallback):
             columns=["xmin", "ymin", "xmax", "ymax", "score", "class_id", "image_id"],
         )
 
-        convert_class_id_lookup = coco80_to_coco91_lookup()
+        predictions_json = self.evaluator.format_box_df_for_cocotools(preds_df, is_preds=True)
 
-        preds_df['class_id'] = preds_df.class_id.map(convert_class_id_lookup)
+        if self.save_predictions_path is not None and trainer.run_config.is_world_process_zero:
+            with open(self.save_predictions_path/"predictions.json", "w") as f:
+                json.dump(predictions_json, f)
 
-        preds_json = self.evaluator.format_box_df_for_cocotools(preds_df, is_preds=True)
+        if self.verbose and trainer.run_config.is_local_process_zero:
+            self.evaluator.verbose = True
 
-        with open('/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json') as f:
-            targets_json = json.load(f)
+        map = self.evaluator.compute(self.targets_json, predictions_json)
 
-        with open('preds.json', 'w') as f:
-            json.dump(preds_json, f)
-
-        coco_eval = self.evaluator._build_coco_eval(targets_json, preds_json)
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
-
-
-        # trainer.run_history.update_metric(f"map", map)
+        trainer.run_history.update_metric(f"map", map)
 
         self.reset()

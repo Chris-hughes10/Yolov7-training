@@ -66,7 +66,16 @@ class Shortcut(nn.Module):
 class Conv(nn.Module):
     # Standard convolution
     def __init__(
-        self, c1, c2, k=1, s=1, p=None, g=1, act=True, eps=1e-3, momentum=0.03,
+        self,
+        c1,
+        c2,
+        k=1,
+        s=1,
+        p=None,
+        g=1,
+        act=True,
+        eps=1e-3,
+        momentum=0.03,
     ):  # ch_in, ch_out, kernel, stride, padding, groups
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)

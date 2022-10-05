@@ -137,8 +137,8 @@ class FocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
-class ComputeYolov7Loss:
 
+class ComputeYolov7Loss:
     def __init__(self, model, autobalance=False):
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
@@ -216,7 +216,7 @@ class ComputeYolov7Loss:
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = (
-                        self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
+                    self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
                 )
 
         return tobj
@@ -230,8 +230,15 @@ class ComputeYolov7Loss:
         )
         #####
 
-        tobj = self.compute_losses(p=p, targets=targets, lcls=lcls, lbox=lbox,
-                                   lobj=lobj, device=device, **kwargs)
+        tobj = self.compute_losses(
+            p=p,
+            targets=targets,
+            lcls=lcls,
+            lbox=lbox,
+            lobj=lobj,
+            device=device,
+            **kwargs
+        )
 
         self.tobj = tobj
 
@@ -248,8 +255,8 @@ class ComputeYolov7Loss:
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
-        na = self.na #number of anchors
-        nt = targets.shape[0] # , targets
+        na = self.na  # number of anchors
+        nt = targets.shape[0]  # , targets
         tcls, tbox, indices, anch = [], [], [], []
         gain = torch.ones(
             7, device=targets.device
@@ -320,15 +327,12 @@ class ComputeYolov7Loss:
 
         return tcls, tbox, indices, anch
 
-class ComputeYolov7LossOTA(ComputeYolov7Loss):
 
+class ComputeYolov7LossOTA(ComputeYolov7Loss):
     def __init__(self, model, autobalance=False):
         super().__init__(model, autobalance)
-        det = (
-            model.module.model[-1] if is_parallel(model) else model.model[-1]
-        )
+        det = model.module.model[-1] if is_parallel(model) else model.model[-1]
         self.stride = det.stride
-
 
     def compute_losses(self, p, targets, imgs, lcls, lbox, lobj, device, **kwargs):
         bs, as_, gjs, gis, targets, anchors = self.build_targets(p, targets, imgs)

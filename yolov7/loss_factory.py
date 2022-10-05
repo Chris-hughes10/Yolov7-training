@@ -39,6 +39,7 @@ def create_yolov7_loss(
 
     return loss_fn
 
+
 def create_yolov7_loss_orig(
     model,
     image_size=640,

@@ -5,16 +5,23 @@ from yolov7.models.model_configs import get_yolov7_config, get_yolov7_e6e_config
 from yolov7.models.yolo import Yolov7Model
 from yolov7.utils import intersect_dicts
 
-MODEL_CONFIGS = {"yolov7": get_yolov7_config,
-                 "yolov7-e6e": get_yolov7_e6e_config()}
+MODEL_CONFIGS = {"yolov7": get_yolov7_config, "yolov7-e6e": get_yolov7_e6e_config()}
 
 
 @local_process_zero_first
 def create_yolov7_model(
-    architecture, num_classes=80, anchors=None, num_channels=3, pretrained=True, training=True
+    architecture,
+    num_classes=80,
+    anchors=None,
+    num_channels=3,
+    pretrained=True,
+    training=True,
 ):
     config = MODEL_CONFIGS[architecture](
-        num_classes=num_classes, anchors=anchors, num_channels=num_channels, training=training
+        num_classes=num_classes,
+        anchors=anchors,
+        num_channels=num_channels,
+        training=training,
     )
 
     model = Yolov7Model(model_config=config)

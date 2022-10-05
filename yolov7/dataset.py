@@ -77,7 +77,9 @@ class Yolov7Dataset(Dataset):
         return image, boxes, classes, index, shape
 
     def __getitem__(self, index):
-        image, boxes, classes, index, original_image_size = self.load_from_dataset(index)
+        image, boxes, classes, index, original_image_size = self.load_from_dataset(
+            index
+        )
         # original_image_size = image.shape[:2]
 
         h, w = original_image_size
@@ -106,7 +108,9 @@ class Yolov7Dataset(Dataset):
             boxes = boxes[valid_boxes]
             classes = classes[valid_boxes]
 
-            boxes = torchvision.ops.box_convert(torch.as_tensor(boxes, dtype=torch.float32), 'xyxy', 'cxcywh')
+            boxes = torchvision.ops.box_convert(
+                torch.as_tensor(boxes, dtype=torch.float32), "xyxy", "cxcywh"
+            )
             # boxes = convert_xyxy_to_cxcywh(boxes)
             boxes[:, [1, 3]] /= image.shape[0]  # normalized height 0-1
             boxes[:, [0, 2]] /= image.shape[1]  # normalized width 0-1
@@ -117,7 +121,7 @@ class Yolov7Dataset(Dataset):
                     torch.zeros((len(boxes), 1)),
                     torch.as_tensor(classes, dtype=torch.float32),
                     # torch.as_tensor(boxes, dtype=torch.float32),
-                    boxes
+                    boxes,
                 )
             )
         else:

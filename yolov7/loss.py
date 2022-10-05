@@ -1,6 +1,7 @@
 # copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/loss.py
 # Loss functions
 import math
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -12,6 +13,14 @@ from yolov7.migrated.utils.general import (
 )
 from yolov7.migrated.utils.torch_utils import is_parallel
 
+class TargetIdx:
+    """Provide names for the each tensor idx for what constitutes a target"""
+    IMG_IDX = 0
+    CLS_ID = 1
+    CX = 2
+    CY = 3
+    W = 4
+    H = 5
 
 def box_iou(box1, box2):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
@@ -181,7 +190,8 @@ class ComputeYolov7Loss:
         self.anchors = det.anchors
 
     def compute_losses(self, p, targets, lcls, lbox, lobj, device, **kwargs):
-        tcls, tbox, indices, anchors = self.find_n_positive(p, targets)  # targets
+        # tcls, tbox, indices, anchors = self.find_n_positive(p, targets)  # targets
+        tcls, tbox, indices, anchors = self.find_predicted_boxes(p, targets)
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
@@ -256,128 +266,183 @@ class ComputeYolov7Loss:
         return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
 
 
-    def find_n_positive(self, p, targets, n_anchor_per_gt=3):
-        """It looks like takes the targets and finds the anchor boxes that might represent them
+    def find_predicted_boxes(
+        self,
+        fpn_heads_outputs: List[torch.tensor],
+        targets: torch.tensor,
+        n_anchors_per_target: int=3
+    ) -> Tuple[List]:
+        """Identify the anchor boxes for each fpn head to be considered predictions for each target
 
-        Basically, the anchor boxes need to be less than "anchor_t" times bigger or smaller in ratio
-        of either h, w.
+        Yolov7 is based on anchor boxes, which means that, for each image, there are boxes predicted
+        at each anchor of each fpn head grid. Instead of considering all of them for computing
+        all losses, a subset is selected in this function. For the subset selected, the regression
+        classification and objectness losses will be applied. For the rest, just the objectness.
+        For OTA losses, further selection is used (see docs there).
 
-        It gets, per each target, all the anchor boxes that fulfill the above condition. Those,
-        it gets one per anchor in the grid that is closer. If g=0.5, it only gets grid anchor
-        where the target anchor falls in, and the 2 closest to that. If g=1.0, it gets the
-        grid anchor where target anchor falls in and all the 4 adjecent. Only 0.5 or 1.0 make
-        sense and are consistent. For intermediate values, for some targets we would get 2, 3, 4.
+        Each anchor (coordinates in grid) defines a grid cell. Each target, at each fpn head, will
+        rarely fall exactly at the anchor. It will fall somewhere inside the cell. Each cell,
+        has 4 neighbour cells (top, bottom, left, right). If `n_anchors_per_target=5`, we will
+        consider all neighbour anchors. If `n_anchors_per_target=3`, we will consider only the two
+        closest to where the target coordinates fall (left or right, and top or bottom).
 
-        I assume these are the anchor boxes that it considers potential foreground.
+        Each fpn head has a set of anchor boxes. For each target, we will only consider the subset
+        of these anchor boxes that are not much bigger or much smaller. How much is defined by
+        the hyperparameter `anchor_t` and the comparison is applied side-wise (not area).
+
+        Finally, the predicted anchor boxes that are considered a potential prediction for the loss
+        are:
+            - anchor boxes in size for target
+            - on all the selected anchors
+            - for each fpn head
+            - for each target in image
+            - for each image in batch
+
+        :param fpn_heads_outputs: List with outputs for each fpn head.
+            Outputs have dims: [n_images, n_anchor_boxes, n_grid_rows, n_grid_cols, n_features]
+        :param targets: Target boxes in images in batch. Dims [n_targets, target_vector]
+        :param n_anchors_per_target: 3 or 5. Anchors to consider for each target.
+        :returns: Tuple with lists, each one with one element per fpn head.
+            - target_class_ids_per_layer: class ids of target corresponding to each selected box.
+            - target_boxes_per_layer: box [cx, cy, h, w]
+                - cx, cy between [0,1] where target box corresponds to falls in the grid cell.
+                - h, w in grid space of the target box.
+                - Each target is duplicated for all the boxes selected for it.
+            - indices_per_layer: Tuple with indices that we will need down the line:
+                - image_idxs: Index of the image in batch where the box belongs to.
+                - used_anchor_box_idxs: Index of anchor box that corresponds to each selected box.
+                    The index comes from the position in self.anchors[fpn_idx] the box comes from.
+                - ta_grid_xtr_j: Grid row index for the selected anchor box.
+                - ta_grid_xtr_i: Grid column index for the selected anchor box.
+            - used_anchor_boxes_per_layer: w,h of the anchor box.
+
         """
-        # targets: [image_idx, class_id, x, y, w, h]
-        # p list of len 4, one per each FPN
-        # e.g. first is size ([2,3,80,80,7]).
-        #   the 80, 80 is each point of the grid defined by stride of FPN
-        #   the 7 is probably image idx, class_id, x, y, w, h, score
-        #   the 2,3 are the anchors (3 per FPN, h and w, or viceversa)
-
-        # Not even sure the naming is correct, but comes from find_3_positive, and find_5_positive
-        if n_anchor_per_gt == 3:
-            g = 0.5 # bias (orig comment, no idea what it means)
-        elif n_anchor_per_gt == 5:
-            g = 1.0
+        if n_anchors_per_target == 3:
+            anchor_offset = 0.5
+        elif n_anchors_per_target == 5:
+            anchor_offset = 1.0
         else:
-            raise ValueError(f"Only 3 or 5 anchor boxes per GT are supported: {n_anchor_per_gt}")
+            raise ValueError(f"Only 3 or 5 anchor boxes per target are supported: {n_anchors_per_target}")
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
-        num_anchors, num_targets = self.na, targets.shape[0]
-        tbox, tcls, indices, anch = [], [], [], []
-        gain = torch.ones(7, device=targets.device).long()  # normalized to gridspace gain
-        # One row per anchor, one column per target each, 0, 1, 2 in each row
-        ai = (
-            torch.arange(num_anchors, device=targets.device).float().view(num_anchors, 1).repeat(1, num_targets)
-        )  # same as .repeat_interleave(nt)
-        # Repeat targets num_anchors times across first dimension, and append idx of the repeat as 7th coordinate
-        targets = torch.cat(
-            (targets.repeat(num_anchors, 1, 1), ai[:, :, None]), 2
-        )  # append anchor indices
+        num_anchor_boxes, num_targets = self.na, targets.shape[0]
+        target_boxes_per_layer = []
+        target_class_ids_per_layer = []
+        indices_per_layer = []
+        used_anchor_boxes_per_layer = []
 
-        off = (
-            torch.tensor(
-                [ # j,k,l,m
+        # One row per anchor, one column per target each, 0, 1, 2 in each row
+        anchor_box_idxs = (
+            torch.arange(num_anchor_boxes, device=targets.device).float()
+            .repeat_interleave(num_targets)
+            .view(num_anchor_boxes, num_targets, 1)
+        )
+        # Duplicate targets for all anchor boxes and add anchor_box_idx as last target component
+        target_anchor_box_pairs = torch.cat(
+            [targets.repeat(num_anchor_boxes, 1, 1), anchor_box_idxs],
+            dim=2
+        )
+
+        anchor_offsets = anchor_offset * torch.tensor(
+                [
                     [0, 0], # No offset
-                    [1, 0], # Offset for x, anchor to right, j
-                    [0, 1], # Offset for y, anchor to down, k
-                    [-1, 0], # Offset for inverse x, anchor to left, l
-                    [0, -1],  # Offset for inverse y, anchor to top, m
-                    # [1, 1], [1, -1], [-1, 1], [-1, -1],  # jk,jm,lk,lm
+                    [1, 0], # x offset for getting left anchor
+                    [0, 1], # y offset for getting top anchor
+                    [-1, 0], # x offset for getting right anchor
+                    [0, -1], # y offset for getting bottom anchor
                 ],
                 device=targets.device,
             ).float()
-            * g
-        )  # offsets
 
-        for i in range(self.nl):
-            # Anchors for the FPN
-            anchors = self.anchors[i]
+        for layer_idx in range(self.nl):
+            layer_anchor_boxes = self.anchors[layer_idx]
+            # Note on matrix, rows are y, cols are x (hence 3,2 are inverted)
+            grid_size = torch.tensor(fpn_heads_outputs[layer_idx].shape)[[3, 2]]
 
-            # extract grid sizes for this FPN layer (e.g. 80, 80) and put into the 1s vector
-            gain[2:6] = torch.tensor(p[i].shape)[[3, 2, 3, 2]]  # xyxy gain
+            # target-anchor pairs on grid coordinates (instead of normalized)
+            ta_grid = target_anchor_box_pairs.clone()
+            ta_grid[:, :, [TargetIdx.CX,TargetIdx.W]] *= grid_size[0]
+            ta_grid[:, :, [TargetIdx.CY,TargetIdx.H]] *= grid_size[1]
 
-            # Convert xywh normalized coordinates to grid coordinates
-            t = targets * gain
-            if num_targets:
-                # Matches
-                # Divide targets wh in box coordinates by each wh of the anchors
-                r = t[:, :, 4:6] / anchors[:, None]  # wh ratio
-                # Find ratio between wh of box coordinates and wh of anchors (all above 1)
-                # For each target and anchor box, find largest ratio (either w or h ratio)
-                # Check the anchor-target pairs were the biggest ratio is below the hyp anchor_t
-                j = torch.max(r, 1.0 / r).max(2)[0] < self.hyp["anchor_t"]  # compare
-                # Select anchor boxes for each target with ratio below threshold
-                t = t[j]  # filter
+            if num_targets > 0:
+                size_ratio = ta_grid[:, :, [TargetIdx.W, TargetIdx.H]] / layer_anchor_boxes[:, None, :]
+                symmetric_size_ratio = torch.max(size_ratio, 1.0 / size_ratio)
+                in_desired_ratio = symmetric_size_ratio.max(dim=2)[0] < self.hyp["anchor_t"]
+                # Drop anchor_box-target pairs where ratio in either h or w is above the hyperparam
+                ta_grid = ta_grid[in_desired_ratio]
 
-                # Offsets
-                # xy coordinates (no wh) in grid space for each kept target-anchor pair
-                gxy = t[:, 2:4]  # grid xy
-                # coordinates until end of grid (instead from start), inverse
-                gxi = gain[[2, 3]] - gxy  # inverse
-                # gxy % 1.0 -> Percentage of the next grid unit target anchor point is
-                # Check that is smaller than a threshold (either 0.5 or 1.0), 1.0 passes all
-                # gxy > 1.0 checks that is at least the second grid unit (why, no clue)
-                # j is bool for target-anchor pairs that fulfill condition for x
-                # k same for y
-                j, k = ((gxy % 1.0 < g) & (gxy > 1.0)).T
-                # Same for inverse, l for inverse x, m for inverse y
-                l, m = ((gxi % 1.0 < g) & (gxi > 1.0)).T
-                # Stack all, first row is True for all, rest is what we found
-                j = torch.stack((torch.ones_like(j), j, k, l, m))
-                # Duplicate set of selected target-anchor pairs (where ratios where below threshold)
-                # One duplicate per each bool vector we found, i.e., all True,
-                #   and ones that fulfill threshold in x, in y, in inverse x, inverse y
-                # And use those vectors to keep only the copies that fulfilled the condition for the row
-                t = t.repeat((5, 1, 1))[j]
-                # Parenthesis is equivalent to off[:, None, :].repeat(1, gxy.shape[0], 1)
-                #   Duplicate the offsets once per each target-anchor kept pair
-                #   Keep the offsets per each row and the conditions fulfilled
-                offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
+                ta_grid_cx = ta_grid[:, TargetIdx.CX]
+                ta_grid_cx_inv = grid_size[0] - ta_grid_cx
+                ta_grid_cy = ta_grid[:, TargetIdx.CY]
+                ta_grid_cy_inv = grid_size[1] - ta_grid_cy
+
+                # Based on where the target coordinates end inside the grid cell, we define the
+                #   extra anchor points we will consider for the target (on top of the grid cell).
+                #   - anchor_offset=0.5 -> Get closest grid cells (right or left, and top or down)
+                #   - anchor_offset=1.0 -> Get all surrounding grid cells (right, left, top, down)
+                get_left_anchor = (((ta_grid_cx % 1.0) < anchor_offset) & (ta_grid_cx > 1.0)).T
+                get_up_anchor = (((ta_grid_cy % 1.0) < anchor_offset) & (ta_grid_cy > 1.0)).T
+                get_right_anchor = (((ta_grid_cx_inv % 1.0) < anchor_offset) & (ta_grid_cx_inv > 1.0)).T
+                get_down_anchor = (((ta_grid_cy_inv % 1.0) < anchor_offset) & (ta_grid_cy_inv > 1.0)).T
+
+                # Center anchor is the anchor of the grid cell where the target coordinates fall in
+                get_center_anchor = torch.ones_like(get_left_anchor)  # True for all targets
+                extra_anchors_selector = torch.stack(
+                    [
+                        get_center_anchor,
+                        get_left_anchor,
+                        get_up_anchor,
+                        get_right_anchor,
+                        get_down_anchor
+                    ]
+                )
+
+                # Duplicate target-anchor_box pair for all possible extra anchor points
+                ta_grid_xtr = ta_grid.repeat((extra_anchors_selector.shape[0], 1, 1))
+                # Keep only the extra anchors that fulfilled the condition in the selector.
+                ta_grid_xtr = ta_grid_xtr[extra_anchors_selector]
+
+                # Duplicate the offsets for each possible target-anchor pair (center and each side)
+                offsets_per_ta_pair = anchor_offsets[:, None, :].repeat(1, ta_grid.shape[0], 1)
+                # Keep only the ones are relevant
+                offsets_per_ta_pair = offsets_per_ta_pair[extra_anchors_selector]
             else:
-                t = targets[0]
-                offsets = 0
+                ta_grid_xtr = targets[0]
+                offsets_per_ta_pair = 0
 
             # Define
-            image_idxs, classes = t[:, :2].long().T  # image, class
-            gxy = t[:, 2:4]  # grid xy
-            gwh = t[:, 4:6]  # grid wh
-            # Apply the offsets
-            gij = (gxy - offsets).long() # WTF, converts to int??
-            gi, gj = gij.T  # grid xy indices
+            image_idxs, target_class_ids = ta_grid_xtr[:, [TargetIdx.IMG_IDX, TargetIdx.CLS_ID]].long().T
+            ta_grid_xtr_xy = ta_grid_xtr[:, [TargetIdx.CX, TargetIdx.CY]]
+            ta_grid_xtr_wh = ta_grid_xtr[:, [TargetIdx.W, TargetIdx.H]]
 
-            # Append
-            anchor_box_idxs = t[:, 6].long()  # anchor box indices
-            indices.append(
-                (image_idxs, anchor_box_idxs, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1))
-            )  # image, anchor, grid indices
-            anch.append(anchors[anchor_box_idxs])  # anchors
-            tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
-            tcls.append(classes)  # class
+            # Apply the offsets and get the anchor indices (i & j) that each anchor represents in grid
+            ta_grid_xtr_ij = (ta_grid_xtr_xy - offsets_per_ta_pair).long()
+            ta_grid_xtr_i, ta_grid_xtr_j = ta_grid_xtr_ij.T
+            # Ensure we can use them as indexers by clamping
+            # TODO: [INPLACE] Original code uses inplace clamp, verify if it makes a difference
+            ta_grid_xtr_i.clamp_(0, grid_size[0] - 1)
+            ta_grid_xtr_j.clamp_(0, grid_size[1] - 1)
 
-        return tcls, tbox, indices, anch
+            # Extract the selected boxes, where xy are the position inside the grid cell
+            layer_target_boxes = torch.cat((ta_grid_xtr_xy - ta_grid_xtr_ij, ta_grid_xtr_wh), 1)
+            # What anchor box was used for each one of the predicted boxes
+            used_anchor_box_idxs = ta_grid_xtr[:, -1].long()
+            used_anchor_boxes = layer_anchor_boxes[used_anchor_box_idxs]
+
+            # Indices tuple with all indices we will need down the line
+            indices = (image_idxs, used_anchor_box_idxs, ta_grid_xtr_j, ta_grid_xtr_i)
+
+            indices_per_layer.append(indices)
+            target_boxes_per_layer.append(layer_target_boxes)
+            target_class_ids_per_layer.append(target_class_ids)
+            used_anchor_boxes_per_layer.append(used_anchor_boxes)
+
+        return (
+            target_class_ids_per_layer,
+            target_boxes_per_layer,
+            indices_per_layer,
+            used_anchor_boxes_per_layer
+        )
+
 
 
 class ComputeYolov7LossOTA(ComputeYolov7Loss):
@@ -438,7 +503,8 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
 
     def build_targets(self, p, targets, imgs, n_anchor_per_gt=3):
 
-        _, _, indices, anch = self.find_n_positive(p, targets, n_anchor_per_gt=n_anchor_per_gt)
+        # _, _, indices, anch = self.find_n_positive(p, targets, n_anchor_per_gt=n_anchor_per_gt)
+        _, _, indices, anch = self.find_predicted_boxes(p, targets, n_anchors_per_target=n_anchor_per_gt)
 
         matching_bs = [[] for pp in p]
         matching_as = [[] for pp in p]

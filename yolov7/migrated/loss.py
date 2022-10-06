@@ -747,6 +747,9 @@ class ComputeLossOTA:
 
             obji = self.BCEobj(pi[..., 4], tobj)
             lobj += obji * self.balance[i]  # obj loss
+
+            self.tobj = tobj
+
             if self.autobalance:
                 self.balance[i] = (
                     self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()

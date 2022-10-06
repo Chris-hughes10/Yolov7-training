@@ -85,8 +85,9 @@ class Yolov7Model(nn.Module):
 
 
 def process_yolov7_outputs(
-    model_outputs, conf_thres=0.2, max_detections=30000, multi_label=True
+    model_outputs, conf_thres=0.001, max_detections=300000, multiple_labels_per_box=True
 ):
+    # TODO move this function inside the model
     model_outputs = model_outputs[0]
     num_classes = model_outputs.shape[2] - 5
 
@@ -118,15 +119,20 @@ def process_yolov7_outputs(
             ]  # conf = obj_conf * cls_conf
 
         # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
-        xyxy_boxes = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
+        xyxy_boxes = torchvision.ops.box_convert(
+            detections_for_image[:, :4], "cxcywh", "xyxy"
+        )
 
-        if multi_label:
+        if multiple_labels_per_box:
             # Detections matrix nx6 (xyxy, conf, cls)
             # keep multiple labels per box
-            box_idxs, class_idxs = (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            box_idxs, class_idxs = (
+                (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            )
             class_confidences = detections_for_image[box_idxs, class_idxs + 5, None]
             detections_for_image = torch.cat(
-                (xyxy_boxes[box_idxs], class_confidences, class_idxs[:, None].float()), 1
+                (xyxy_boxes[box_idxs], class_confidences, class_idxs[:, None].float()),
+                1,
             )
 
         else:
@@ -153,7 +159,36 @@ def process_yolov7_outputs(
     return outputs
 
 
-def scale_bboxes(xyxy_boxes, resized_hw, original_hw, is_padded=True):
+def filter_predictions(predictions, confidence_threshold=0.001, nms_iou_threshold=0.65):
+    filtered_preds = []
+
+    image_idxs = predictions[:, -1].unique()
+    for image_idx in image_idxs:
+
+        pred = predictions[predictions[:, -1] == image_idx]
+
+        pred = pred[pred[:, 4] >= confidence_threshold]
+
+        # If none remain process next image
+        # if not pred.shape[0]:
+        #     filtered_preds.append(torch.zeros((0, 6), device=pred.device))
+        #     continue
+
+        nms_idx = torchvision.ops.batched_nms(
+            boxes=pred[:, :4],
+            scores=pred[:, 4],
+            idxs=pred[:, 5],
+            iou_threshold=nms_iou_threshold,
+        )
+
+        filtered_preds.append(pred[nms_idx])
+
+    return torch.vstack(filtered_preds)
+
+
+def scale_bboxes_to_original_image_size(
+    xyxy_boxes, resized_hw, original_hw, is_padded=True
+):
     scaled_boxes = xyxy_boxes.clone()
     scale_ratio = resized_hw[0] / original_hw[0], resized_hw[1] / original_hw[1]
 

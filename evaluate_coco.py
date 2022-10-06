@@ -14,6 +14,7 @@ from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_colla
 from yolov7.evaluation import CalculateMetricsCallback
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.trainer import Yolov7Trainer
+from yolov7.utils import SaveFirstBatchCallback
 
 # fmt: off
 COCO80_TO_COCO91_MAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28,
@@ -74,13 +75,17 @@ class COCOBaseDataset(CocoDetection):
 
 
 class ConvertPredictionClassesCallback(TrainerCallback):
-
     def __init__(self):
         self.lookup = coco80_to_coco91_lookup()
+
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
         predictions = batch_output["predictions"]
         coco_80_class_ids = predictions[:, -2]
-        coco_91_class_ids = torch.as_tensor([self.lookup[int(c)] for c in coco_80_class_ids], device=predictions.device, dtype=predictions.dtype)
+        coco_91_class_ids = torch.as_tensor(
+            [self.lookup[int(c)] for c in coco_80_class_ids],
+            device=predictions.device,
+            dtype=predictions.dtype,
+        )
         # modify batch output inplace
         batch_output["predictions"][:, -2] = coco_91_class_ids
 
@@ -97,7 +102,7 @@ def main():
         ),
     )
     with open(
-            "/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json"
+        "/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json"
     ) as f:
         targets_json = json.load(f)
 

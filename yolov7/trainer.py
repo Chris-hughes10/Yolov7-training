@@ -1,10 +1,11 @@
 import torch
-import torchvision.ops
-from PIL import Image
 from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 
-from yolov7.models.yolo import process_yolov7_outputs, scale_bboxes
+from yolov7.models.yolo import (
+    process_yolov7_outputs,
+    scale_bboxes_to_original_image_size,
+)
 
 
 class DisableAugmentationCallback(TrainerCallback):
@@ -80,27 +81,11 @@ class Yolov7Trainer(Trainer):
             val_loss, loss_items = self.eval_loss_func(p=rpn_outputs, targets=labels)
             preds = process_yolov7_outputs(
                 model_outputs,
-                conf_thres=0.001,
-                max_detections=300000,
             )
-            # show_image(images[0].permute((1, 2, 0)).detach().cpu(), formatted_predictions[formatted_predictions[:, -1] == 0][:, :4].detach().cpu().tolist())
+
             resized_image_sizes = torch.as_tensor(
                 images.shape[2:], device=original_image_sizes.device
             )[None].repeat(len(inference_outputs), 1)
-
-            nms_preds = []
-
-            for pred in preds:
-                nms_idx = torchvision.ops.batched_nms(
-                    boxes=pred[:, :4],
-                    scores=pred[:, 4],
-                    idxs=pred[:, 5],
-                    iou_threshold=0.65,
-                )
-                # nms_preds.append(pred[nms_idx][:300])
-                nms_preds.append(pred[nms_idx])
-
-            preds = nms_preds
 
         formatted_predictions = self.get_formatted_preds(
             image_idxs, preds, original_image_sizes, resized_image_sizes
@@ -122,13 +107,21 @@ class Yolov7Trainer(Trainer):
     def get_formatted_preds(
         self, image_idxs, preds, original_image_sizes, resized_image_sizes
     ):
+        """
+        scale bboxes to original image dimensions, and associate image idx with predictions
+        :param image_idxs:
+        :param preds:
+        :param original_image_sizes:
+        :param resized_image_sizes:
+        :return:
+        """
         formatted_preds = []
         for i, (image_idx, image_preds) in enumerate(zip(image_idxs, preds)):
             # x1, y1, x2, y2, score, class_id, image_idx
             formatted_preds.append(
                 torch.cat(
                     (
-                        scale_bboxes(
+                        scale_bboxes_to_original_image_size(
                             image_preds[:, :4],
                             resized_hw=resized_image_sizes[i],
                             original_hw=original_image_sizes[i],

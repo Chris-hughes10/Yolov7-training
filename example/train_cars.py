@@ -19,6 +19,7 @@ from yolov7.dataset import (
 )
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.trainer import Yolov7Trainer
+from yolov7.utils import SaveFirstBatchCallback
 
 
 def main():
@@ -91,6 +92,7 @@ def main():
         eval_loss_func=create_yolov7_loss(model, ota_loss=False),
         callbacks=[
             CalculateMetricsCallback(),
+            SaveFirstBatchCallback("./batches", num_images_per_batch=3),
             *get_default_callbacks(progress_bar=True),
         ],
     )

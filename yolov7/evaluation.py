@@ -2,7 +2,7 @@ import contextlib
 import json
 import sys
 from pathlib import Path
-from typing import Set, List, Dict
+from typing import List, Dict
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -11,6 +11,8 @@ import torch
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
+
+from yolov7.models.yolo import filter_predictions
 
 XMIN_COL = "xmin"
 YMIN_COL = "ymin"
@@ -28,7 +30,6 @@ class DummyFile(object):
         pass
 
 
-
 @contextlib.contextmanager
 def silencer():
     save_stdout = sys.stdout
@@ -36,8 +37,8 @@ def silencer():
     yield
     sys.stdout = save_stdout
 
-class Silencer:
 
+class Silencer:
     def __init__(self):
         self.save_stdout = sys.stdout
 
@@ -55,8 +56,6 @@ class Silencer:
         self.stop()
 
 
-
-
 class COCOMeanAveragePrecision:
     """Mean Average Precision for single IoU threshold based on pycocotools
 
@@ -65,7 +64,7 @@ class COCOMeanAveragePrecision:
 
     # Box area range is a concept needed for benchmarking models, we do not need that.
     # Thus, we pick one that can just fit any prediction.
-    AREA_RANGE = np.array([0 ** 2, 1e5 ** 2])
+    AREA_RANGE = np.array([0**2, 1e5**2])
     AREA_RANGE_LABEL = "all"
     # Maximum number of predictions we account for each image.
     MAX_PREDS = 100
@@ -75,17 +74,15 @@ class COCOMeanAveragePrecision:
         self.verbose = verbose
         self.silencer = Silencer()
 
-    def __call__(
-            self, targets_json: pd.DataFrame, preds_json
-    ) -> float:
-        """Calculate mAP from json files
-
-        """
+    def __call__(self, targets_json: pd.DataFrame, preds_json) -> float:
+        """Calculate mAP from json files"""
         mAP = self.compute(targets_json, preds_json)
         return mAP
 
     def compute_from_dfs(
-            self, targets_df: pd.DataFrame, preds_df: pd.DataFrame,
+        self,
+        targets_df: pd.DataFrame,
+        preds_df: pd.DataFrame,
     ) -> float:
         """Calculate mAP
 
@@ -120,7 +117,7 @@ class COCOMeanAveragePrecision:
 
     @staticmethod
     def format_box_df_for_cocotools(
-            box_df: pd.DataFrame, is_preds: bool = False
+        box_df: pd.DataFrame, is_preds: bool = False
     ) -> List[Dict]:
         # `box_df` is either a `targets_df` or a `preds_df`
         box_df = box_df.copy()  # Ensure no side effects
@@ -214,19 +211,32 @@ class COCOMeanAveragePrecision:
 
 
 class CalculateMetricsCallback(TrainerCallback):
-    def __init__(self, targets_json, iou_threshold=None, save_predictions_output_dir_path=None, verbose=False):
+    def __init__(
+        self,
+        targets_json,
+        iou_threshold=None,
+        save_predictions_output_dir_path=None,
+        verbose=False,
+        nms_iou_threshold=0.65,
+        prediction_confidence_threshold=0.001,
+    ):
 
         self.evaluator = COCOMeanAveragePrecision(iou_threshold)
         self.targets_json = targets_json
         self.verbose = verbose
-        self.save_predictions_path = Path(
-            save_predictions_output_dir_path) if save_predictions_output_dir_path is not None else None
+        self.save_predictions_path = (
+            Path(save_predictions_output_dir_path)
+            if save_predictions_output_dir_path is not None
+            else None
+        )
+        self.nms_iou_thres = nms_iou_threshold
+        self.confidence_threshold = prediction_confidence_threshold
+
         self.eval_predictions = []
         self.image_ids = set()
 
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
         predictions = batch_output["predictions"]
-
         self.update(predictions)
 
     def remove_seen(self, labels):
@@ -248,7 +258,12 @@ class CalculateMetricsCallback(TrainerCallback):
         return labels
 
     def update(self, predictions):
-        filtered_predictions = self.remove_seen(predictions)
+        predictions = self.remove_seen(predictions)
+        filtered_predictions = filter_predictions(
+            predictions,
+            confidence_threshold=self.confidence_threshold,
+            nms_iou_threshold=self.nms_iou_thres,
+        )
 
         if len(filtered_predictions) > 0:
             self.eval_predictions.extend(filtered_predictions.tolist())
@@ -265,10 +280,15 @@ class CalculateMetricsCallback(TrainerCallback):
             columns=["xmin", "ymin", "xmax", "ymax", "score", "class_id", "image_id"],
         )
 
-        predictions_json = self.evaluator.format_box_df_for_cocotools(preds_df, is_preds=True)
+        predictions_json = self.evaluator.format_box_df_for_cocotools(
+            preds_df, is_preds=True
+        )
 
-        if self.save_predictions_path is not None and trainer.run_config.is_world_process_zero:
-            with open(self.save_predictions_path/"predictions.json", "w") as f:
+        if (
+            self.save_predictions_path is not None
+            and trainer.run_config.is_world_process_zero
+        ):
+            with open(self.save_predictions_path / "predictions.json", "w") as f:
                 json.dump(predictions_json, f)
 
         if self.verbose and trainer.run_config.is_local_process_zero:

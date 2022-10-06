@@ -118,24 +118,25 @@ def process_yolov7_outputs(
             ]  # conf = obj_conf * cls_conf
 
         # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
-        box = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
+        xyxy_boxes = torchvision.ops.box_convert(detections_for_image[:, :4], "cxcywh", "xyxy")
 
         if multi_label:
             # Detections matrix nx6 (xyxy, conf, cls)
             # keep multiple labels per box
-            i, j = (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            box_idxs, class_idxs = (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            class_confidences = detections_for_image[box_idxs, class_idxs + 5, None]
             detections_for_image = torch.cat(
-                (box[i], detections_for_image[i, j + 5, None], j[:, None].float()), 1
+                (xyxy_boxes[box_idxs], class_confidences, class_idxs[:, None].float()), 1
             )
 
         else:
             # best class only
             # j, most confident class index
-            conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
+            class_conf, class_idxs = detections_for_image[:, 5:].max(1, keepdim=True)
 
             # filter by class confidence
-            detections_for_image = torch.cat((box, conf, class_idx), 1)[
-                conf.view(-1) > conf_thres
+            detections_for_image = torch.cat((xyxy_boxes, class_conf, class_idxs), 1)[
+                class_conf.view(-1) > conf_thres
             ]
 
         # Check shape
@@ -151,46 +152,6 @@ def process_yolov7_outputs(
 
     return outputs
 
-# def filter_predictions(model_outputs, conf_thres, multi_label=False):
-#     for image_idx, detections_for_image in enumerate(
-#         model_outputs
-#     ):  # image index, image inference
-#
-#         # filter by confidence
-#         detections_for_image = detections_for_image[
-#             detections_for_image[:, 4] >= conf_thres
-#         ]
-#
-#         box = detections_for_image[:, :4]
-#
-#         if multi_label:
-#             # Detections matrix nx6 (xyxy, conf, cls)
-#             # keep multiple labels per box
-#             i, j = (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
-#             detections_for_image = torch.cat(
-#                 (box[i], detections_for_image[i, j + 5, None], j[:, None].float()), 1
-#             )
-#
-#         else:
-#             # best class only
-#             # j, most confident class index
-#             conf, class_idx = detections_for_image[:, 5:].max(1, keepdim=True)
-#
-#             # filter by class confidence
-#             detections_for_image = torch.cat((box, conf, class_idx), 1)[
-#                 conf.view(-1) > conf_thres
-#             ]
-#
-#         # Check shape
-#         n = detections_for_image.shape[0]  # number of boxes
-#         if not n:  # no boxes
-#             continue
-#         elif n > max_detections:  # excess boxes
-#             detections_for_image = detections_for_image[
-#                 detections_for_image[:, 4].argsort(descending=True)[:max_detections]
-#             ]  # sort by confidence
-#
-#         outputs[image_idx] = detections_for_image
 
 def scale_bboxes(xyxy_boxes, resized_hw, original_hw, is_padded=True):
     scaled_boxes = xyxy_boxes.clone()

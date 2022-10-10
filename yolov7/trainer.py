@@ -1,6 +1,10 @@
+from typing import List
+
 import torch
+import torchvision
 from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
+from torch import Tensor
 
 from yolov7.models.yolo import (
     process_yolov7_outputs,
@@ -14,28 +18,48 @@ class DisableAugmentationCallback(TrainerCallback):
 
     def on_train_epoch_start(self, trainer, **kwargs):
         if (
-            trainer.run_history.current_epoch
-            == trainer.run_config.num_epochs - self.no_aug_epochs
+                trainer.run_history.current_epoch
+                == trainer.run_config.num_epochs - self.no_aug_epochs
         ):
             trainer.print("Disabling Mosaic Augmentation")
             trainer.train_dataset.ds.disable()
+
+
+def filter_eval_predictions(predictions: Tensor,
+                            confidence_threshold: float = 0.2,
+                            nms_threshold: float = 0.65) -> List[Tensor]:
+    nms_preds = []
+    for pred in predictions:
+        pred = pred[pred[:, 4] > confidence_threshold]
+
+        nms_idx = torchvision.ops.batched_nms(
+            boxes=pred[:, :4],
+            scores=pred[:, 4],
+            idxs=pred[:, 5],
+            iou_threshold=nms_threshold,
+        )
+        nms_preds.append(pred[nms_idx])
+
+    return nms_preds
 
 
 class Yolov7Trainer(Trainer):
     YOLO7_PADDING_VALUE = -2.0
 
     def __init__(
-        self,
-        model,
-        loss_func,
-        eval_loss_func,
-        optimizer,
-        callbacks,
+            self,
+            model,
+            loss_func,
+            eval_loss_func,
+            optimizer,
+            callbacks,
+            filter_eval_predictions=None,
     ):
         super().__init__(
             model=model, loss_func=loss_func, optimizer=optimizer, callbacks=callbacks
         )
         self.eval_loss_func = eval_loss_func
+        self.filter_eval_predictions = filter_eval_predictions
 
     def training_run_start(self):
         self.loss_func.BCEcls.to(self.device)
@@ -83,6 +107,11 @@ class Yolov7Trainer(Trainer):
                 model_outputs,
             )
 
+            if self.filter_eval_predictions is not None:
+                preds = self.filter_eval_predictions(preds)
+
+            # preds = filter_eval_predictions(preds, confidence_threshold=0.1, nms_threshold=0.65)
+
             resized_image_sizes = torch.as_tensor(
                 images.shape[2:], device=original_image_sizes.device
             )[None].repeat(len(inference_outputs), 1)
@@ -105,7 +134,7 @@ class Yolov7Trainer(Trainer):
         }
 
     def get_formatted_preds(
-        self, image_idxs, preds, original_image_sizes, resized_image_sizes
+            self, image_idxs, preds, original_image_sizes, resized_image_sizes
     ):
         """
         scale bboxes to original image dimensions, and associate image idx with predictions

@@ -34,11 +34,19 @@ def get_rectangle_params_from_pascal_bbox(bbox):
 
 
 def draw_bboxes(
-    plot_ax,
-    bboxes,
-    get_rectangle_corners_fn=get_rectangle_params_from_pascal_bbox,
+        plot_ax,
+        bboxes,
+        class_labels=None,
+        color_1="black",
+        color_2="white",
+        get_rectangle_corners_fn=get_rectangle_params_from_pascal_bbox,
 ):
-    for bbox in bboxes:
+    if class_labels is not None:
+        assert len(class_labels) == len(bboxes)
+    else:
+        class_labels = [None] * len(bboxes)
+
+    for bbox, label in zip(bboxes, class_labels):
         bottom_left, width, height = get_rectangle_corners_fn(bbox)
 
         rect_1 = patches.Rectangle(
@@ -46,7 +54,7 @@ def draw_bboxes(
             width,
             height,
             linewidth=4,
-            edgecolor="black",
+            edgecolor=color_1,
             fill=False,
         )
         rect_2 = patches.Rectangle(
@@ -54,13 +62,17 @@ def draw_bboxes(
             width,
             height,
             linewidth=2,
-            edgecolor="white",
+            edgecolor=color_2,
             fill=False,
         )
 
         # Add the patch to the Axes
         plot_ax.add_patch(rect_1)
         plot_ax.add_patch(rect_2)
+
+        if label is not None:
+            rx, ry = rect_1.get_xy()
+            plot_ax.annotate(label, (rx, ry + height), color=color_2, fontsize=20)
 
 
 draw_bboxes_coco = partial(
@@ -82,14 +94,14 @@ draw_functions = {
 }
 
 
-def annotate_image(image, bboxes=None, bbox_format="xyxy", close_fig=True):
+def annotate_image(image, bboxes=None, class_labels=None, bbox_format="xyxy", close_fig=True):
     draw_bboxes_fn = draw_functions[bbox_format]
 
     fig, ax = plt.subplots(1, figsize=(10, 10))
     ax.imshow(image)
 
     if bboxes:
-        draw_bboxes_fn(ax, bboxes)
+        draw_bboxes_fn(ax, bboxes, class_labels)
 
     if close_fig:
         plt.close(fig)
@@ -97,6 +109,6 @@ def annotate_image(image, bboxes=None, bbox_format="xyxy", close_fig=True):
     return fig
 
 
-def show_image(image, bboxes=None, bbox_format="pascal"):
-    fig = annotate_image(image, bboxes, bbox_format, close_fig=False)
+def show_image(image, bboxes=None, class_labels=None, bbox_format="xyxy"):
+    fig = annotate_image(image, bboxes, class_labels, bbox_format, close_fig=False)
     plt.show()

@@ -326,7 +326,7 @@ class MosaicMixupDataset:
         return self._output_height, self._output_width
 
     def load_from_dataset(self, index, resize=False):
-        image, xyxy_boxes, classes, idx = self._dataset[index]
+        image, xyxy_boxes, classes, image_id, image_hw = self._dataset[index]
 
         if resize:
             image, xyxy_boxes, classes = _apply_transform(
@@ -336,7 +336,7 @@ class MosaicMixupDataset:
                 classes=classes,
             )
 
-        return np.array(image), xyxy_boxes, classes, idx
+        return np.array(image), xyxy_boxes, classes, image_id, image_hw
 
     def __len__(self):
         return len(self._dataset)
@@ -358,7 +358,7 @@ class MosaicMixupDataset:
             ).tolist()
             random.shuffle(indices)
 
-            mosaic_images, mosaic_boxes, mosaic_classes, idxs = zip(
+            mosaic_images, mosaic_boxes, mosaic_classes, idxs, image_shapes = zip(
                 *[self.load_from_dataset(ds_index) for ds_index in indices]
             )
 
@@ -374,7 +374,8 @@ class MosaicMixupDataset:
                     classes=classes,
                 )
         else:
-            image, boxes, classes, idx = self.load_from_dataset(index)
+            indices = [index]
+            image, boxes, classes, image_id, image_hw = self.load_from_dataset(index)
 
         if random.random() <= self.apply_mixup_probability:
             if not apply_mosaic:
@@ -387,7 +388,7 @@ class MosaicMixupDataset:
                 )
             image, boxes, classes = self.apply_mixup(image, boxes, classes)
 
-        return image, boxes, classes, index
+        return image, boxes, classes, index, indices
 
     def apply_mixup(self, image, boxes, classes):
         mixup_image = None
@@ -397,7 +398,7 @@ class MosaicMixupDataset:
         while len(mixup_boxes) == 0:
             # select a random image with labels from the dataset to use as mixup image
             mixup_image_index = random.randint(0, self.__len__() - 1)
-            mixup_image, mixup_boxes, mixup_classes, idx = self.load_from_dataset(
+            mixup_image, mixup_boxes, mixup_classes, image_id, image_hw = self.load_from_dataset(
                 mixup_image_index
             )
             mixup_image, mixup_boxes, mixup_classes = _apply_transform(

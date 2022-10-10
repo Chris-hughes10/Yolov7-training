@@ -21,28 +21,41 @@ class SaveFirstBatchCallback(TrainerCallback):
         self.num_images_per_batch = num_images_per_batch
         self.num_epochs = num_epochs
 
+    def save_batch(self, batch, out_path):
+        images, labels, image_idxs, original_image_sizes = (
+            batch[0],
+            batch[1],
+            batch[2],
+            batch[3].cpu(),
+        )
+
+        for idx in range(self.num_images_per_batch):
+            image = images[idx].permute(1, 2, 0).clone().detach().cpu()
+
+            boxes = labels[labels[:, 0] == idx][:, 2:].clone().detach().cpu()
+            boxes[:, [0, 2]] *= image.shape[0]
+            boxes[:, [1, 3]] *= image.shape[1]
+
+            fig = annotate_image(image, boxes.tolist(), "cxcywh")
+            out_path.mkdir(exist_ok=True, parents=True)
+
+            fig.savefig(out_path / f"image_{idx}.jpg")
+
+    @local_process_zero_only
+    def on_train_step_end(self, trainer, batch, batch_output, **kwargs):
+        if trainer.run_history.current_epoch == 1:
+            out_path = (
+                    self.output_path
+                    / f"epoch_{trainer.run_history.current_epoch}/train/"
+            )
+            self.save_batch(batch, out_path)
+
     @local_process_zero_only
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
         if trainer.run_history.current_epoch == 1:
-            images, labels, image_idxs, original_image_sizes = (
-                batch[0],
-                batch[1],
-                batch[2],
-                batch[3].cpu(),
-            )
-
-            for idx in range(self.num_images_per_batch):
-                image = images[idx].permute(1, 2, 0).clone().detach().cpu()
-
-                boxes = labels[labels[:, 0] == idx][:, 2:].clone().detach().cpu()
-                boxes[:, [0, 2]] *= image.shape[0]
-                boxes[:, [1, 3]] *= image.shape[1]
-
-                fig = annotate_image(image, boxes.tolist(), "cxcywh")
-                out_path = (
+            out_path = (
                     self.output_path
                     / f"epoch_{trainer.run_history.current_epoch}/eval/"
-                )
-                out_path.mkdir(exist_ok=True, parents=True)
+            )
+            self.save_batch(batch, out_path)
 
-                fig.savefig(out_path / f"image_{idx}.jpg")

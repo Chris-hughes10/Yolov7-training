@@ -8,8 +8,11 @@ import torchvision
 from torch import nn
 
 from yolov7.anchors import check_anchor_order
+from yolov7.migrated.models.common import RepConv
 from yolov7.models.config_builder import create_model_from_config
 from yolov7.models.core.detection_heads import Detect, IDetect, IAuxDetect
+from yolov7.models.core.layer_operations import fuse_conv_and_bn
+from yolov7.models.core.layers import Conv
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +70,9 @@ class Yolov7Model(nn.Module):
 
             if self.traced:
                 if (
-                        isinstance(module_, Detect)
-                        or isinstance(module_, IDetect)
-                        or isinstance(module_, IAuxDetect)
+                    isinstance(module_, Detect)
+                    or isinstance(module_, IDetect)
+                    or isinstance(module_, IAuxDetect)
                 ):
                     break
 
@@ -82,7 +85,7 @@ class Yolov7Model(nn.Module):
 
 
 def process_yolov7_outputs(
-        model_outputs, conf_thres=0.001, max_detections=30000, multiple_labels_per_box=True
+    model_outputs, conf_thres=0.001, max_detections=3000, multiple_labels_per_box=True
 ):
     # TODO move this function inside the model
     model_outputs = model_outputs[0]
@@ -93,13 +96,13 @@ def process_yolov7_outputs(
     ]
 
     for image_idx, detections_for_image in enumerate(
-            model_outputs
+        model_outputs
     ):  # image index, image inference
 
         # filter by confidence
         detections_for_image = detections_for_image[
             detections_for_image[:, 4] >= conf_thres
-            ]
+        ]
 
         # If none remain process next image
         if not detections_for_image.shape[0]:
@@ -107,13 +110,13 @@ def process_yolov7_outputs(
 
         if num_classes == 1:
             detections_for_image[:, 5:] = detections_for_image[
-                                          :, 4:5
-                                          ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
+                :, 4:5
+            ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
             # so there is no need to multiply.
         else:
             detections_for_image[:, 5:] *= detections_for_image[
-                                           :, 4:5
-                                           ]  # conf = obj_conf * cls_conf
+                :, 4:5
+            ]  # conf = obj_conf * cls_conf
 
         # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
         xyxy_boxes = torchvision.ops.box_convert(
@@ -140,7 +143,7 @@ def process_yolov7_outputs(
             # filter by class confidence
             detections_for_image = torch.cat((xyxy_boxes, class_conf, class_idxs), 1)[
                 class_conf.view(-1) > conf_thres
-                ]
+            ]
 
         # Check shape
         n = detections_for_image.shape[0]  # number of boxes
@@ -156,8 +159,35 @@ def process_yolov7_outputs(
     return outputs
 
 
+def filter_predictions(predictions, confidence_threshold=0.001, nms_iou_threshold=0.65):
+    filtered_preds = []
+
+    image_idxs = predictions[:, -1].unique()
+    for image_idx in image_idxs:
+
+        pred = predictions[predictions[:, -1] == image_idx]
+
+        pred = pred[pred[:, 4] >= confidence_threshold]
+
+        # If none remain process next image
+        # if not pred.shape[0]:
+        #     filtered_preds.append(torch.zeros((0, 6), device=pred.device))
+        #     continue
+
+        nms_idx = torchvision.ops.batched_nms(
+            boxes=pred[:, :4],
+            scores=pred[:, 4],
+            idxs=pred[:, 5],
+            iou_threshold=nms_iou_threshold,
+        )
+
+        filtered_preds.append(pred[nms_idx])
+
+    return torch.vstack(filtered_preds)
+
+
 def scale_bboxes_to_original_image_size(
-        xyxy_boxes, resized_hw, original_hw, is_padded=True
+    xyxy_boxes, resized_hw, original_hw, is_padded=True
 ):
     scaled_boxes = xyxy_boxes.clone()
     scale_ratio = resized_hw[0] / original_hw[0], resized_hw[1] / original_hw[1]
@@ -166,7 +196,7 @@ def scale_bboxes_to_original_image_size(
         # remove padding
         pad_scale = min(scale_ratio)
         padding = (resized_hw[1] - original_hw[1] * pad_scale) / 2, (
-                resized_hw[0] - original_hw[0] * pad_scale
+            resized_hw[0] - original_hw[0] * pad_scale
         ) / 2
         scaled_boxes[:, [0, 2]] -= padding[0]  # x padding
         scaled_boxes[:, [1, 3]] -= padding[1]  # y padding

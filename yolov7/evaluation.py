@@ -12,8 +12,6 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pytorch_accelerated.callbacks import TrainerCallback
 
-from yolov7.models.yolo import filter_predictions
-
 XMIN_COL = "xmin"
 YMIN_COL = "ymin"
 XMAX_COL = "xmax"
@@ -25,17 +23,6 @@ BOX_HEIGHT_COL = "h"
 IMAGE_ID_COL = "image_id"
 
 
-class DummyFile(object):
-    def write(self, x):
-        pass
-
-
-@contextlib.contextmanager
-def silencer():
-    save_stdout = sys.stdout
-    sys.stdout = DummyFile()
-    yield
-    sys.stdout = save_stdout
 
 
 class Silencer:
@@ -44,7 +31,6 @@ class Silencer:
 
     def start(self):
         sys.stdout = MagicMock()
-        # sys.stdout = DummyFile()
 
     def stop(self):
         sys.stdout = self.save_stdout
@@ -106,14 +92,19 @@ class COCOMeanAveragePrecision:
     def _format_inputs(self, targets_df, preds_df, image_ids):
         preds = self.format_box_df_for_cocotools(preds_df, is_preds=True)
         # Targets are expected to carry extra information
-        target_anns = self.format_box_df_for_cocotools(targets_df)
+        targets = self.create_targets_json_from_df(targets_df, image_ids)
+
+        return targets, preds
+
+    @classmethod
+    def create_targets_json_from_df(cls, targets_df, image_ids):
+        target_anns = cls.format_box_df_for_cocotools(targets_df)
         targets = {
             "images": [{"id": id_} for id_ in set(image_ids)],
             "categories": [{"id": cat} for cat in targets_df[CLASS_ID_COL].unique()],
             "annotations": target_anns,
         }
-
-        return targets, preds
+        return targets
 
     @staticmethod
     def format_box_df_for_cocotools(
@@ -217,8 +208,6 @@ class CalculateMetricsCallback(TrainerCallback):
         iou_threshold=None,
         save_predictions_output_dir_path=None,
         verbose=False,
-        nms_iou_threshold=0.65,
-        prediction_confidence_threshold=0.001,
     ):
 
         self.evaluator = COCOMeanAveragePrecision(iou_threshold)
@@ -229,8 +218,6 @@ class CalculateMetricsCallback(TrainerCallback):
             if save_predictions_output_dir_path is not None
             else None
         )
-        self.nms_iou_thres = nms_iou_threshold
-        self.confidence_threshold = prediction_confidence_threshold
 
         self.eval_predictions = []
         self.image_ids = set()
@@ -258,12 +245,7 @@ class CalculateMetricsCallback(TrainerCallback):
         return labels
 
     def update(self, predictions):
-        predictions = self.remove_seen(predictions)
-        filtered_predictions = filter_predictions(
-            predictions,
-            confidence_threshold=self.confidence_threshold,
-            nms_iou_threshold=self.nms_iou_thres,
-        )
+        filtered_predictions = self.remove_seen(predictions)
 
         if len(filtered_predictions) > 0:
             self.eval_predictions.extend(filtered_predictions.tolist())
@@ -299,3 +281,25 @@ class CalculateMetricsCallback(TrainerCallback):
         trainer.run_history.update_metric(f"map", map)
 
         self.reset()
+
+    @classmethod
+    def create_from_targets_df(
+        cls,
+        targets_df,
+        image_ids,
+        iou_threshold=None,
+        save_predictions_output_dir_path=None,
+        verbose=False,
+    ):
+
+        targets_json = COCOMeanAveragePrecision.create_targets_json_from_df(
+            targets_df, image_ids
+        )
+
+        return cls(
+            targets_json=targets_json,
+            iou_threshold=iou_threshold,
+            save_predictions_output_dir_path=save_predictions_output_dir_path,
+            verbose=verbose,
+
+        )

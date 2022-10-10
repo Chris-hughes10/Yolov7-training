@@ -1,11 +1,8 @@
-import json
-import os
-
 import albumentations as A
 import numpy as np
 import torch
 import torchvision
-from pytorch_accelerated import notebook_launcher
+from func_to_script import script
 from pytorch_accelerated.callbacks import get_default_callbacks, TrainerCallback
 from torchvision.datasets.coco import CocoDetection
 
@@ -14,7 +11,6 @@ from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_colla
 from yolov7.evaluation import CalculateMetricsCallback
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.trainer import Yolov7Trainer
-from yolov7.utils import SaveFirstBatchCallback
 
 # fmt: off
 COCO80_TO_COCO91_MAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28,
@@ -38,6 +34,7 @@ class COCOBaseDataset(CocoDetection):
     def __init__(self, img_dir, annotation_path, tfms=None):
         super().__init__(root=str(img_dir), annFile=str(annotation_path))
         self.lookup = coco91_to_coco80_lookup()
+        self.targets_json = self.coco.dataset
         self.tfms = tfms
 
     def __getitem__(self, index):
@@ -45,9 +42,7 @@ class COCOBaseDataset(CocoDetection):
 
         image, targets = super().__getitem__(index)
         image = np.array(image)
-
-        shape = image.shape[:2]
-
+        image_hw = image.shape[:2]
         raw_boxes = [target["bbox"] for target in targets if target["iscrowd"] == 0]
 
         if len(raw_boxes) == 0:
@@ -71,7 +66,7 @@ class COCOBaseDataset(CocoDetection):
             xyxy_bboxes = np.array(transformed["bboxes"])
             class_ids = np.array(transformed["labels"])
 
-        return image, xyxy_bboxes, class_ids, image_id, shape
+        return image, xyxy_bboxes, class_ids, image_id, image_hw
 
 
 class ConvertPredictionClassesCallback(TrainerCallback):
@@ -90,27 +85,28 @@ class ConvertPredictionClassesCallback(TrainerCallback):
         batch_output["predictions"][:, -2] = coco_91_class_ids
 
 
-def main():
+@script
+def run_evaluation(
+        coco_valid_images_path: str = "../coco_dataset/coco/images/val2017",
+        coco_valid_annotations_file_path: str = "../coco_dataset/coco/annotations/instances_val2017.json",
+        image_size: int = 640
+):
     ds = COCOBaseDataset(
-        "/home/chris/notebooks/Yolov7-training/coco_dataset/coco/images/val2017",
-        "/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json",
+        coco_valid_images_path,
+        coco_valid_annotations_file_path,
         tfms=A.Compose(
             [
-                A.LongestMaxSize(640),
+                A.LongestMaxSize(image_size),
             ],
             bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
         ),
     )
-    with open(
-        "/home/chris/notebooks/Yolov7-training/coco_dataset/coco/annotations/instances_val2017.json"
-    ) as f:
-        targets_json = json.load(f)
 
     eval_yds = Yolov7Dataset(
-        ds, create_yolov7_transforms(training=False, image_size=(640, 640))
+        ds, create_yolov7_transforms(training=False, image_size=(image_size, image_size))
     )
 
-    model = create_yolov7_model(architecture="yolov7", pretrained=True, training=True)
+    model = create_yolov7_model(architecture="yolov7", pretrained=True)
 
     trainer = Yolov7Trainer(
         model=model,
@@ -119,7 +115,7 @@ def main():
         eval_loss_func=create_yolov7_loss(model, ota_loss=False),
         callbacks=[
             ConvertPredictionClassesCallback,
-            CalculateMetricsCallback(targets_json=targets_json, verbose=True),
+            CalculateMetricsCallback(targets_json=ds.targets_json, verbose=True),
             *get_default_callbacks(progress_bar=True),
         ],
     )
@@ -127,15 +123,10 @@ def main():
     trainer.evaluate(
         dataset=eval_yds,
         per_device_batch_size=40,
-        # dataloader_kwargs={'num_workers': 0},
         collate_fn=yolov7_collate_fn,
     )
 
-    print("done")
-
 
 if __name__ == "__main__":
-    os.environ["mixed_precision"] = "fp16"
-    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    notebook_launcher(main, num_processes=2)
-    # main()
+    run_evaluation()
+    # notebook_launcher(run_evaluation, num_processes=2)

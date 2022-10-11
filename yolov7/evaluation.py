@@ -23,8 +23,6 @@ BOX_HEIGHT_COL = "h"
 IMAGE_ID_COL = "image_id"
 
 
-
-
 class Silencer:
     def __init__(self):
         self.save_stdout = sys.stdout
@@ -301,5 +299,4 @@ class CalculateMetricsCallback(TrainerCallback):
             iou_threshold=iou_threshold,
             save_predictions_output_dir_path=save_predictions_output_dir_path,
             verbose=verbose,
-
         )

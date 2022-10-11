@@ -18,12 +18,12 @@ def _apply_transform(transform, image, boxes, classes):
 def create_post_mosaic_transform(
     output_height,
     output_width,
-    pad_colour,
+    pad_colour=(114, 114, 114),
     rotation_range=(-10, 10),
     shear_range=(-10, 10),
     translation_percent_range=(-0.2, 0.2),
-    scale_range=(1, 1.5),
-    apply_prob=1,
+    scale_range=(0.08, 1.0),
+    apply_prob=0.8,
 ):
     return A.Compose(
         [
@@ -32,13 +32,18 @@ def create_post_mosaic_transform(
                 rotate=rotation_range,
                 shear=shear_range,
                 translate_percent=translation_percent_range,
-                scale=scale_range,
+                scale=None,
                 keep_ratio=True,
                 p=apply_prob,
             ),
-            # A.RandomResizedCrop(height=output_height, width=output_width, scale=scale_range),
+            A.HorizontalFlip(),
+            A.RandomResizedCrop(
+                height=output_height, width=output_width, scale=scale_range
+            ),
         ],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+        bbox_params=A.BboxParams(
+            format="pascal_voc", label_fields=["labels"], min_visibility=0.25
+        ),
     )
 
 
@@ -49,62 +54,29 @@ def create_pre_mixup_transform(flip_prob=0.5, **kwargs):
     )
 
 
-def create_resize_transform(output_height, output_width, pad_colour):
-    return A.Compose(
-        [
-            A.LongestMaxSize(max(output_height, output_width)),
-            A.PadIfNeeded(
-                output_height,
-                output_width,
-                border_mode=0,
-                value=pad_colour,
-            ),
-            A.Resize(height=output_height, width=output_width),
-        ],
-        bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-    )
-
-
 class MosaicBuilder:
-    def __init__(
-        self, fix_centre, output_height, output_width, pad_colour=(144, 144, 144)
-    ):
-        self.fix_centre = fix_centre
-        self.output_height = output_height
-        self.output_width = output_width
+    def __init__(self, pad_colour=(144, 144, 144)):
         self.pad_colour = pad_colour
-        self._resize_transform = A.Compose(
-            [
-                A.Resize(height=self.output_height, width=self.output_width),
-                # A.RandomResizedCrop(height=self.output_height, width=self.output_width),
-            ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-        )
-
-    @staticmethod
-    def create_resize_transform(output_height, output_width, pad_colour):
-        return A.Compose(
-            [
-                A.LongestMaxSize(max(output_height, output_width)),
-                A.PadIfNeeded(
-                    output_height,
-                    output_width,
-                    border_mode=0,
-                    value=pad_colour,
-                ),
-                A.Resize(height=output_height, width=output_width),
-            ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
-        )
 
     def create_mosaic(self, images, boxes, classes):
-        centre_x, centre_y = self._get_mosaic_centre()
+
+        mosaic_width = max(
+            images[0].shape[1] + images[1].shape[1],
+            images[2].shape[1] + images[3].shape[1],
+        )
+        mosaic_height = max(
+            images[0].shape[0] + images[2].shape[0],
+            images[1].shape[0] + images[3].shape[0],
+        )
 
         mosaic_image = np.full(
-            (self.output_height * 2, self.output_width * 2, 3),
+            (mosaic_height, mosaic_width, 3),
             self.pad_colour,
             dtype=np.uint8,
         )
+
+        centre_x, centre_y = self._get_mosaic_centre(mosaic_height, mosaic_width)
+
         mosaic_labels = []
 
         for mosaic_position, (image, image_boxes, image_classes) in enumerate(
@@ -131,6 +103,8 @@ class MosaicBuilder:
                 centre_y,
                 image_height,
                 image_width,
+                mosaic_height,
+                mosaic_width,
             )
 
             mosaic_image[mosaic_y1:mosaic_y2, mosaic_x1:mosaic_x2] = image[
@@ -151,8 +125,8 @@ class MosaicBuilder:
             mosaic_labels = np.concatenate(mosaic_labels, 0)
             clip_labels_inplace(
                 mosaic_labels,
-                output_height=2 * self.output_height,
-                output_width=2 * self.output_width,
+                output_height=mosaic_height,
+                output_width=mosaic_width,
             )
 
             valid_boxes = (mosaic_labels[:, 2] > mosaic_labels[:, 0]) & (
@@ -166,30 +140,22 @@ class MosaicBuilder:
             mosaic_boxes = np.array([])
             mosaic_classes = np.array([])
 
-        mosaic_image, mosaic_boxes, mosaic_classes = _apply_transform(
-            self._resize_transform,
-            image=mosaic_image,
-            boxes=mosaic_boxes,
-            classes=mosaic_classes,
-        )
+        return mosaic_image, mosaic_boxes, mosaic_classes, (mosaic_height, mosaic_width)
 
-        return mosaic_image, mosaic_boxes, mosaic_classes
-
-    def _get_mosaic_centre(self):
-        if self.fix_centre:
-            centre_x = 2 * self.output_width // 2
-            centre_y = 2 * self.output_height // 2
-        else:
-            centre_x = int(
-                random.uniform(0.5 * self.output_width, 1.5 * self.output_width)
-            )
-            centre_y = int(
-                random.uniform(0.5 * self.output_height, 1.5 * self.output_height)
-            )
+    def _get_mosaic_centre(self, mosaic_height, mosaic_width):
+        centre_x = mosaic_width // 2
+        centre_y = mosaic_height // 2
         return centre_x, centre_y
 
     def _get_mosaic_coordinates(
-        self, position_idx, centre_x, centre_y, image_height, image_width
+        self,
+        position_idx,
+        centre_x,
+        centre_y,
+        image_height,
+        image_width,
+        mosaic_height,
+        mosaic_width,
     ):
         if position_idx == 0:  # top left
             mosaic_x1, mosaic_y1, mosaic_x2, mosaic_y2 = (
@@ -209,7 +175,7 @@ class MosaicBuilder:
             mosaic_x1, mosaic_y1, mosaic_x2, mosaic_y2 = (
                 centre_x,
                 max(centre_y - image_height, 0),
-                min(centre_x + image_width, self.output_width * 2),
+                min(centre_x + image_width, mosaic_width),
                 centre_y,
             )
             image_x1, image_y1, image_x2, image_y2 = (
@@ -224,7 +190,7 @@ class MosaicBuilder:
                 max(centre_x - image_width, 0),
                 centre_y,
                 centre_x,
-                min(self.output_height * 2, centre_y + image_height),
+                min(mosaic_height, centre_y + image_height),
             )
             image_x1, image_y1, image_x2, image_y2 = (
                 image_width - (mosaic_x2 - mosaic_x1),
@@ -237,8 +203,8 @@ class MosaicBuilder:
             mosaic_x1, mosaic_y1, mosaic_x2, mosaic_y2 = (
                 centre_x,
                 centre_y,
-                min(centre_x + image_width, self.output_width * 2),
-                min(self.output_height * 2, centre_y + image_height),
+                min(centre_x + image_width, mosaic_width),
+                min(mosaic_height, centre_y + image_height),
             )
             image_x1, image_y1, image_x2, image_y2 = (
                 0,
@@ -293,49 +259,29 @@ class MosaicMixupDataset:
         dataset,
         apply_mosaic_probability=1,
         apply_mixup_probability=1,
-        output_height=1280,
-        output_width=1280,
-        pad_colour=(0, 0, 0),
-        create_post_mosaic_transforms_fn=create_post_mosaic_transform,
-        create_pre_mixup_transforms_fn=create_pre_mixup_transform,
-        fix_mosaic_centre=False,
+        pad_colour=(114, 114, 114),
+        post_mosaic_transforms=None,
+        pre_mixup_transforms=None,
     ):
         self._dataset = dataset
         self.apply_mosaic_probability = apply_mosaic_probability
         self.apply_mixup_probability = apply_mixup_probability
         self.pad_colour = pad_colour
-        self.create_post_mosaic_transforms_fn = create_post_mosaic_transforms_fn
-        self.create_pre_mixup_transforms_fn = create_pre_mixup_transforms_fn
 
         self.mosaic_builder = MosaicBuilder(
-            output_width=output_width,
-            output_height=output_height,
             pad_colour=pad_colour,
-            fix_centre=fix_mosaic_centre,
         )
 
         self._output_height = None
         self._output_width = None
-        self.post_mosaic_transforms = None
-        self.pre_mixup_transforms = None
-        self._resize_transform = self.create_resize_transform(
-            output_height, output_width, pad_colour
-        )
+        self.post_mosaic_transforms = post_mosaic_transforms
+        self.pre_mixup_transforms = pre_mixup_transforms
 
     def get_output_size(self):
         return self._output_height, self._output_width
 
-    def load_from_dataset(self, index, resize=False):
+    def load_from_dataset(self, index):
         image, xyxy_boxes, classes, image_id, image_hw = self._dataset[index]
-
-        if resize:
-            image, xyxy_boxes, classes = _apply_transform(
-                self._resize_transform,
-                image=image,
-                boxes=xyxy_boxes,
-                classes=classes,
-            )
-
         return np.array(image), xyxy_boxes, classes, image_id, image_hw
 
     def __len__(self):
@@ -358,11 +304,11 @@ class MosaicMixupDataset:
             ).tolist()
             random.shuffle(indices)
 
-            mosaic_images, mosaic_boxes, mosaic_classes, idxs, image_shapes = zip(
+            mosaic_images, mosaic_boxes, mosaic_classes, image_id, orig_images_hw = zip(
                 *[self.load_from_dataset(ds_index) for ds_index in indices]
             )
 
-            image, boxes, classes = self.mosaic_builder.create_mosaic(
+            image, boxes, classes, image_hw = self.mosaic_builder.create_mosaic(
                 mosaic_images, mosaic_boxes, mosaic_classes
             )
 
@@ -374,21 +320,16 @@ class MosaicMixupDataset:
                     classes=classes,
                 )
         else:
-            indices = [index]
             image, boxes, classes, image_id, image_hw = self.load_from_dataset(index)
 
         if random.random() <= self.apply_mixup_probability:
-            if not apply_mosaic:
-                # Make sure images are correct size
-                image, boxes, classes = _apply_transform(
-                    self._resize_transform,
-                    image=image,
-                    boxes=boxes,
-                    classes=classes,
-                )
-            image, boxes, classes = self.apply_mixup(image, boxes, classes)
+            image_id = [image_id]
+            (image, boxes, classes), mixup_other_image_id = self.apply_mixup(
+                image, boxes, classes
+            )
+            image_id.append(mixup_other_image_id)
 
-        return image, boxes, classes, index, indices
+        return image, boxes, classes, image_id, image_hw
 
     def apply_mixup(self, image, boxes, classes):
         mixup_image = None
@@ -398,11 +339,19 @@ class MosaicMixupDataset:
         while len(mixup_boxes) == 0:
             # select a random image with labels from the dataset to use as mixup image
             mixup_image_index = random.randint(0, self.__len__() - 1)
-            mixup_image, mixup_boxes, mixup_classes, image_id, image_hw = self.load_from_dataset(
-                mixup_image_index
-            )
+            (
+                mixup_image,
+                mixup_boxes,
+                mixup_classes,
+                image_id,
+                image_hw,
+            ) = self.load_from_dataset(mixup_image_index)
             mixup_image, mixup_boxes, mixup_classes = _apply_transform(
-                self._resize_transform,
+                self.create_resize_transform(
+                    output_height=image.shape[0],
+                    output_width=image.shape[1],
+                    pad_colour=self.pad_colour,
+                ),
                 image=mixup_image,
                 boxes=mixup_boxes,
                 classes=mixup_classes,
@@ -413,7 +362,10 @@ class MosaicMixupDataset:
                 self.pre_mixup_transforms, mixup_image, mixup_boxes, mixup_classes
             )
 
-        return mixup(image, boxes, classes, mixup_image, mixup_boxes, mixup_classes)
+        return (
+            mixup(image, boxes, classes, mixup_image, mixup_boxes, mixup_classes),
+            image_id,
+        )
 
     @staticmethod
     def create_resize_transform(output_height, output_width, pad_colour):

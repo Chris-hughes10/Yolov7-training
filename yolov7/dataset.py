@@ -1,3 +1,5 @@
+from itertools import chain
+
 import albumentations as A
 import numpy as np
 import torch
@@ -109,9 +111,16 @@ class Yolov7Dataset(Dataset):
         else:
             labels_out = torch.zeros((0, 6))
 
+        try:
+            if len(image_id) > 0:
+                image_id_tensor = torch.as_tensor([])
+
+        except TypeError:
+            image_id_tensor = torch.as_tensor(image_id)
+
         return (
             torch.as_tensor(image.transpose(2, 0, 1), dtype=torch.float32),
             labels_out,
-            torch.as_tensor(image_id),
+            image_id_tensor,
             torch.as_tensor(original_image_size),
         )

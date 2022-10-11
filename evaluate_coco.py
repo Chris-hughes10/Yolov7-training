@@ -87,9 +87,9 @@ class ConvertPredictionClassesCallback(TrainerCallback):
 
 @script
 def run_evaluation(
-        coco_valid_images_path: str = "../coco_dataset/coco/images/val2017",
-        coco_valid_annotations_file_path: str = "../coco_dataset/coco/annotations/instances_val2017.json",
-        image_size: int = 640
+    coco_valid_images_path: str = "../coco_dataset/coco/images/val2017",
+    coco_valid_annotations_file_path: str = "../coco_dataset/coco/annotations/instances_val2017.json",
+    image_size: int = 640,
 ):
     ds = COCOBaseDataset(
         coco_valid_images_path,
@@ -103,7 +103,8 @@ def run_evaluation(
     )
 
     eval_yds = Yolov7Dataset(
-        ds, create_yolov7_transforms(training=False, image_size=(image_size, image_size))
+        ds,
+        create_yolov7_transforms(training=False, image_size=(image_size, image_size)),
     )
 
     model = create_yolov7_model(architecture="yolov7", pretrained=True)

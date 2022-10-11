@@ -34,12 +34,12 @@ def get_rectangle_params_from_pascal_bbox(bbox):
 
 
 def draw_bboxes(
-        plot_ax,
-        bboxes,
-        class_labels=None,
-        color_1="black",
-        color_2="white",
-        get_rectangle_corners_fn=get_rectangle_params_from_pascal_bbox,
+    plot_ax,
+    bboxes,
+    class_labels=None,
+    color_1="black",
+    color_2="white",
+    get_rectangle_corners_fn=get_rectangle_params_from_pascal_bbox,
 ):
     if class_labels is not None:
         assert len(class_labels) == len(bboxes)
@@ -94,14 +94,16 @@ draw_functions = {
 }
 
 
-def annotate_image(image, bboxes=None, class_labels=None, bbox_format="xyxy", close_fig=True):
+def annotate_image(
+    image, bboxes=None, class_labels=None, bbox_format="xyxy", close_fig=True
+):
     draw_bboxes_fn = draw_functions[bbox_format]
 
     fig, ax = plt.subplots(1, figsize=(10, 10))
     ax.imshow(image)
 
     if bboxes:
-        draw_bboxes_fn(ax, bboxes, class_labels)
+        draw_bboxes_fn(ax, bboxes=bboxes, class_labels=class_labels)
 
     if close_fig:
         plt.close(fig)
@@ -110,5 +112,11 @@ def annotate_image(image, bboxes=None, class_labels=None, bbox_format="xyxy", cl
 
 
 def show_image(image, bboxes=None, class_labels=None, bbox_format="xyxy"):
-    fig = annotate_image(image, bboxes, class_labels, bbox_format, close_fig=False)
+    fig = annotate_image(
+        image,
+        bboxes=bboxes,
+        class_labels=class_labels,
+        bbox_format=bbox_format,
+        close_fig=False,
+    )
     plt.show()

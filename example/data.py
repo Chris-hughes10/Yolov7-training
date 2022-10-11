@@ -24,11 +24,13 @@ def load_cars_df(annotations_file_path, images_path):
 
     df = pd.concat((annotations_df, non_annotated_df))
 
-    class_id_to_label = dict(enumerate(df.query('has_annotation == True').class_name.unique()))
+    class_id_to_label = dict(
+        enumerate(df.query("has_annotation == True").class_name.unique())
+    )
     class_label_to_id = {v: k for k, v in class_id_to_label.items()}
 
     df["image_id"] = df.image.map(image_to_image_id)
-    df["class_id"] = df.class_name.map(class_id_to_label)
+    df["class_id"] = df.class_name.map(class_label_to_id)
 
     file_names = tuple(df.image.unique())
     random.seed(42)
@@ -40,17 +42,17 @@ def load_cars_df(annotations_file_path, images_path):
         "image_id_to_image": image_id_to_image,
         "image_to_image_id": image_to_image_id,
         "class_id_to_label": class_id_to_label,
-        "class_label_to_id": class_label_to_id
+        "class_label_to_id": class_label_to_id,
     }
     return train_df, valid_df, lookups
 
 
 class DatasetAdaptor(Dataset):
     def __init__(
-            self,
-            images_dir_path,
-            annotations_dataframe,
-            transforms=None,
+        self,
+        images_dir_path,
+        annotations_dataframe,
+        transforms=None,
     ):
         self.images_dir_path = Path(images_dir_path)
         self.annotations_df = annotations_dataframe

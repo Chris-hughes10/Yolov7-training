@@ -20,6 +20,7 @@ class SaveFirstBatchCallback(TrainerCallback):
         self.output_path = Path(output_path)
         self.num_images_per_batch = num_images_per_batch
         self.num_epochs = num_epochs
+        self.batch_idx = 0
 
     def save_batch(self, batch, out_path):
         images, labels, image_idxs, original_image_sizes = (
@@ -31,31 +32,35 @@ class SaveFirstBatchCallback(TrainerCallback):
 
         for idx in range(self.num_images_per_batch):
             image = images[idx].permute(1, 2, 0).clone().detach().cpu()
-
-            boxes = labels[labels[:, 0] == idx][:, 2:].clone().detach().cpu()
+            image_labels = labels[labels[:, 0] == idx].clone().detach().cpu()
+            boxes = image_labels[:, 2:]
             boxes[:, [0, 2]] *= image.shape[0]
             boxes[:, [1, 3]] *= image.shape[1]
+            class_ids = image_labels[:, 1]
 
-            fig = annotate_image(image, boxes.tolist(), "cxcywh")
+            fig = annotate_image(
+                image,
+                bboxes=boxes.tolist(),
+                class_labels=class_ids.tolist(),
+                bbox_format="cxcywh",
+            )
             out_path.mkdir(exist_ok=True, parents=True)
 
             fig.savefig(out_path / f"image_{idx}.jpg")
 
     @local_process_zero_only
     def on_train_step_end(self, trainer, batch, batch_output, **kwargs):
-        if trainer.run_history.current_epoch == 1:
+        if trainer.run_history.current_epoch == 1 and self.batch_idx == 0:
             out_path = (
-                    self.output_path
-                    / f"epoch_{trainer.run_history.current_epoch}/train/"
+                self.output_path / f"epoch_{trainer.run_history.current_epoch}/train/"
             )
             self.save_batch(batch, out_path)
+            self.batch_idx += 1
 
     @local_process_zero_only
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
-        if trainer.run_history.current_epoch == 1:
+        if trainer.run_history.current_epoch == 1 and self.batch_idx == 0:
             out_path = (
-                    self.output_path
-                    / f"epoch_{trainer.run_history.current_epoch}/eval/"
+                self.output_path / f"epoch_{trainer.run_history.current_epoch}/eval/"
             )
             self.save_batch(batch, out_path)
-

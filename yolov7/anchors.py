@@ -112,6 +112,7 @@ def check_anchor_order(m):
 
 
 def update_model_anchors_inplace(model, anchors):
+    # TODO move inside model
     detect_module = (
         model.module.model[-1] if hasattr(model, "module") else model.model[-1]
     )  # Detect()

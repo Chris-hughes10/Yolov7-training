@@ -17,7 +17,7 @@ from yolov7.dataset import (
     create_yolov7_transforms,
     yolov7_collate_fn,
 )
-from yolov7.evaluation import CalculateMetricsCallback
+from yolov7.evaluation.calculate_map_callback import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss_orig
 from yolov7.mosaic import MosaicMixupDataset, create_post_mosaic_transform
 from yolov7.trainer import Yolov7Trainer, filter_eval_predictions
@@ -107,7 +107,7 @@ def main(
             filter_eval_predictions, confidence_threshold=0.01, nms_threshold=0.3
         ),
         callbacks=[
-            CalculateMetricsCallback.create_from_targets_df(
+            CalculateMeanAveragePrecisionCallback.create_from_targets_df(
                 targets_df=valid_df.query("has_annotation == True")[
                     ["image_id", "xmin", "ymin", "xmax", "ymax", "class_id"]
                 ],

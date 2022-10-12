@@ -8,7 +8,7 @@ from torchvision.datasets.coco import CocoDetection
 
 from yolov7 import create_yolov7_model
 from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_collate_fn
-from yolov7.evaluation import CalculateMetricsCallback
+from yolov7.evaluation.calculate_map_callback import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.trainer import Yolov7Trainer
 
@@ -116,7 +116,7 @@ def run_evaluation(
         eval_loss_func=create_yolov7_loss(model, ota_loss=False),
         callbacks=[
             ConvertPredictionClassesCallback,
-            CalculateMetricsCallback(targets_json=ds.targets_json, verbose=True),
+            CalculateMeanAveragePrecisionCallback(targets_json=ds.targets_json, verbose=True),
             *get_default_callbacks(progress_bar=True),
         ],
     )
@@ -130,4 +130,3 @@ def run_evaluation(
 
 if __name__ == "__main__":
     run_evaluation()
-    # notebook_launcher(run_evaluation, num_processes=2)

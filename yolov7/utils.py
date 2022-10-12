@@ -1,4 +1,6 @@
+import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from pytorch_accelerated.callbacks import TrainerCallback
 from pytorch_accelerated.utils import local_process_zero_only
@@ -64,3 +66,20 @@ class SaveFirstBatchCallback(TrainerCallback):
                 self.output_path / f"epoch_{trainer.run_history.current_epoch}/eval/"
             )
             self.save_batch(batch, out_path)
+
+
+class Silencer:
+    def __init__(self):
+        self.save_stdout = sys.stdout
+
+    def start(self):
+        sys.stdout = MagicMock()
+
+    def stop(self):
+        sys.stdout = self.save_stdout
+
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()

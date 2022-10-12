@@ -17,7 +17,7 @@ from yolov7.dataset import (
     create_yolov7_transforms,
     yolov7_collate_fn,
 )
-from yolov7.evaluation.calculate_map_callback import CalculateMeanAveragePrecisionCallback
+from yolov7.evaluation import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss_orig
 from yolov7.mosaic import MosaicMixupDataset, create_post_mosaic_transform
 from yolov7.trainer import Yolov7Trainer, filter_eval_predictions

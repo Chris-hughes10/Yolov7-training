@@ -8,7 +8,7 @@ from torchvision.datasets.coco import CocoDetection
 
 from yolov7 import create_yolov7_model
 from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_collate_fn
-from yolov7.evaluation.calculate_map_callback import CalculateMeanAveragePrecisionCallback
+from yolov7.evaluation import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.trainer import Yolov7Trainer
 

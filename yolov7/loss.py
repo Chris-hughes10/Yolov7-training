@@ -379,7 +379,7 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             obji = self.BCEobj(pi[..., 4], tobj)
             lobj += obji * self.balance[i]  # obj loss
 
-            return tobj
+        return tobj
 
     def build_targets(self, p, targets, imgs):
 

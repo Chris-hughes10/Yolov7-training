@@ -3,5 +3,9 @@
 *.pyc
 /model_configs/
 /coco_dataset/
+<<<<<<< HEAD
 */.ipynb_checkpoints/
 *.ipynb
+=======
+/cars_dataset/
+>>>>>>> 7b720b8 (Start for loss fun)

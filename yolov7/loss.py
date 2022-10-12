@@ -158,7 +158,7 @@ class FocalLoss(nn.Module):
             return loss
 
 def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.tensor:
-    """Transform model raw outputs into proper cx, cy, w, h
+    """Transform moraw outputs into proper cx, cy, w, h
 
     For xy we apply a sigmoid and a translation from (0,1) -> (-0.5, 1.5). This means that the
     model can correct each anchor point to be 0.5 positions in the grid smaller or 1.5 positions
@@ -374,6 +374,8 @@ class ComputeYolov7Loss:
             - for each fpn head
             - for each target in image
             - for each image in batch
+
+        This is probably center prior.
 
         :param fpn_heads_outputs: List with outputs for each fpn head.
             Outputs have dims: [n_images, n_anchor_boxes, n_grid_rows, n_grid_cols, n_features]
@@ -781,221 +783,210 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             matching_anchs,
         )
 
-    def build_targets(self, p, targets, imgs, n_anchor_per_gt=3):
+    def build_targets(self, fpn_heads_outputs, targets, imgs, n_anchor_per_gt=3):
         """Start with selected boxes as regular loss, but then, for each image, treat it as an OTA
         problem and select less boxes based on cost. Return those."""
 
-        # _, _, indices, anch = self.find_n_positive(p, targets, n_anchor_per_gt=n_anchor_per_gt)
-        _, _, indices, anch = self.find_predicted_boxes(p, targets, n_anchors_per_target=n_anchor_per_gt)
+        found_boxes = self.find_predicted_boxes(fpn_heads_outputs, targets, n_anchors_per_target=n_anchor_per_gt)
+        indices = found_boxes[2]
+        anchor_boxes_per_layer = found_boxes[3]
 
-        matching_bs = [[] for pp in p]
-        matching_as = [[] for pp in p]
-        matching_gjs = [[] for pp in p]
-        matching_gis = [[] for pp in p]
-        matching_targets = [[] for pp in p]
-        matching_anchs = [[] for pp in p]
+        matching_image_idxs = [[] for fpn_head_outputs in fpn_heads_outputs]
+        matching_anchor_idxs = [[] for fpn_head_outputs in fpn_heads_outputs]
+        matching_grid_j = [[] for fpn_head_outputs in fpn_heads_outputs]
+        matching_grid_i = [[] for fpn_head_outputs in fpn_heads_outputs]
+        matching_targets = [[] for fpn_head_outputs in fpn_heads_outputs]
+        matching_anchor_boxes = [[] for fpn_head_outputs in fpn_heads_outputs]
 
-        nl = len(p)
+        num_fpn_heads = len(fpn_heads_outputs)
 
-        # For each image
-        for batch_idx in range(p[0].shape[0]):
+        for image_idx in range(fpn_heads_outputs[0].shape[0]):
 
-            b_idx = targets[:, 0] == batch_idx
-            # Targets corresponding to the current image
-            this_target = targets[b_idx]
-            # Image without targets
-            if this_target.shape[0] == 0:
+            is_this_image = targets[:, TargetIdx.IMG_IDX] == image_idx
+            image_targets = targets[is_this_image]
+            image_size = imgs[image_idx].shape[1]
+
+            num_image_targets = image_targets.shape[0]
+            if num_image_targets == 0:
                 continue
 
-            # Convert from cxcywh normalized to image coordinates cxcywh
-            txywh = this_target[:, 2:6] * imgs[batch_idx].shape[1]
-            # Convert to xyxy image coordinates
-            txyxy = xywh2xyxy(txywh)
+            targets_xywh = image_targets[:, [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]]
+            targets_xywh_img_coords = targets_xywh * image_size
+            targets_xyxy = xywh2xyxy(targets_xywh_img_coords)
 
-            pxyxys = []
-            p_cls = []
-            p_obj = []
-            from_which_layer = []
-            all_b = []
-            all_a = []
-            all_gj = []
-            all_gi = []
-            all_anch = []
+            preds_xyxy = []
+
+            all_preds_xyxy = []
+            all_pred_class_scores = []
+            all_pred_objectness = []
+            all_layer_idxs = []
+            all_image_idxs = []
+            all_anchor_box_idxs = []
+            all_grid_j = []
+            all_grid_i = []
+            all_anchor_boxes = []
 
             # For each fpn head
-            for i, pi in enumerate(p):
+            for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
+                image_idxs, anchor_box_idxs, grid_j, grid_i = indices[layer_idx]
 
-                # batch_idx, anchor_idx, grid j, grid i
-                b, a, gj, gi = indices[i]
-                # Select susbset corresponding to current image
-                idx = b == batch_idx
-                b, a, gj, gi = b[idx], a[idx], gj[idx], gi[idx]
-                all_b.append(b) # batch idx
-                all_a.append(a) # anchor idx
-                all_gj.append(gj) # grid j
-                all_gi.append(gi) # grid i
-                all_anch.append(anch[i][idx]) # anchors (w,h)
-                from_which_layer.append(torch.ones(size=(len(b),)) * i) # layer_idx
+                is_this_image = image_idxs == image_idx
+                image_idxs = image_idxs[is_this_image]
+                anchor_box_idxs = anchor_box_idxs[is_this_image]
+                grid_j = grid_j[is_this_image]
+                grid_i = grid_i[is_this_image]
+                anchor_boxes = anchor_boxes_per_layer[layer_idx][is_this_image]
+                layer_idxs = torch.full_like(image_idxs, fill_value=layer_idx)
 
-                # Candidate anchors for this layer and image
-                fg_pred = pi[b, a, gj, gi]
-                p_obj.append(fg_pred[:, 4:5]) # objectness
-                p_cls.append(fg_pred[:, 5:]) # class probs
+                all_image_idxs.append(image_idxs)
+                all_anchor_box_idxs.append(anchor_box_idxs)
+                all_grid_j.append(grid_j) # grid j
+                all_grid_i.append(grid_i) # grid i
+                all_anchor_boxes.append(anchor_boxes) # anchors (w,h)
+                all_layer_idxs.append(layer_idxs) # layer_idx
 
-                grid = torch.stack([gi, gj], dim=1) # anchor points for the image and layer
-                # Sigmoid (-inf, inf) -> (0, 1) interval
-                #   * 2 -> (0, 2) interval
-                #   - 0.5 -> (-0.5, 1.5) interval
-                # First grid coordinates, then image coordinates
-                pxy = (fg_pred[:, :2].sigmoid() * 2.0 - 0.5 + grid) * self.stride[
-                    i
-                ]  # / 8.
-                # pxy = (fg_pred[:, :2].sigmoid() * 3. - 1. + grid) * self.stride[i]
-                # (-inf, inf) -> (0, 4) (which coincides with anchor_t param)
-                # First to grid coordinates, then to image coordiates
-                pwh = (
-                    (fg_pred[:, 2:4].sigmoid() * 2) ** 2 * anch[i][idx] * self.stride[i]
-                )  # / 8.
-                # Image coordinates cxcywh
-                pxywh = torch.cat([pxy, pwh], dim=-1)
-                # Image coordinates xyxy
-                pxyxy = xywh2xyxy(pxywh)
-                pxyxys.append(pxyxy)
+                selected_outputs = fpn_head_outputs[image_idxs, anchor_box_idxs, grid_j, grid_i]
+
+                preds = transform_model_outputs_into_predictions(selected_outputs)
+                preds[..., PredIdx.CX] += grid_i
+                preds[..., PredIdx.CY] += grid_j
+                preds[..., [PredIdx.W, PredIdx.H]] *= anchor_boxes
+                preds_xywh = preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
+                preds_xywh_img_coords = preds_xywh * self.stride[layer_idx]
+                preds_xyxy = xywh2xyxy(preds_xywh_img_coords)
+                all_preds_xyxy.append(preds_xyxy)
+
+                pred_objectness = preds[..., [PredIdx.OBJ]]
+                all_pred_objectness.append(pred_objectness)
+
+                pred_class_scores = preds[..., PredIdx.OBJ+1:]
+                all_pred_class_scores.append(pred_class_scores)
 
             # All candidate boxes, from all layers, for current image (N x 4, xyxy)
-            pxyxys = torch.cat(pxyxys, dim=0)
-            if pxyxys.shape[0] == 0:
+            all_preds_xyxy = torch.cat(all_preds_xyxy, dim=0)
+            num_image_preds = all_preds_xyxy.shape[0]
+            if num_image_preds == 0:
                 continue
-            # All objectness preds for the boxes across all layers, current image (Nx1)
-            p_obj = torch.cat(p_obj, dim=0)
-            # All class preds for the boxes across all layers, current image (Nxn_class)
-            p_cls = torch.cat(p_cls, dim=0)
-            # Layer idx for each box, (Nx1)
-            from_which_layer = torch.cat(from_which_layer, dim=0)
-            all_b = torch.cat(all_b, dim=0)  # Basically same idx for all
-            all_a = torch.cat(all_a, dim=0)  # Anchor idxs each box comes from, layer matters
-            all_gj = torch.cat(all_gj, dim=0)  # Grid j, but grid depends on layer
-            all_gi = torch.cat(all_gi, dim=0)  # Grod i, but grid depends on layer
-            all_anch = torch.cat(all_anch, dim=0)  # Anchor boxes wh in image coordinates (not modified by model)
+            pred_objectness = torch.cat(all_pred_objectness, dim=0)
+            pred_class_scores = torch.cat(all_pred_class_scores, dim=0).float()
+            layer_idxs = torch.cat(all_layer_idxs, dim=0)
+            image_idxs = torch.cat(all_image_idxs, dim=0)
+            anchor_box_idxs = torch.cat(all_anchor_box_idxs, dim=0)
+            grid_j = torch.cat(all_grid_j, dim=0)
+            grid_i = torch.cat(all_grid_i, dim=0)
+            anchor_boxes = torch.cat(all_anchor_boxes, dim=0)
 
-            # box iou across all each target with selected boxes for it in image (NOT CIoU!!)
-            pair_wise_iou = box_iou(txyxy, pxyxys)
-
+            pair_wise_iou = box_iou(targets_xyxy, all_preds_xyxy)
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
 
-            # Select top k IoU, where k is either the param or all of them
-            top_k, _ = torch.topk(pair_wise_iou, min(self.min_for_top_k, pair_wise_iou.shape[1]), dim=1)
-            # ? Sum of top IoUs truncated to int.
-            dynamic_ks = torch.clamp(top_k.sum(1).int(), min=1)
+            # Calculate dynamic K per target as defined in the OTA paper
+            k = min(self.min_for_top_k, pair_wise_iou.shape[1])
+            top_k_ious, _ = torch.topk(pair_wise_iou, k, dim=1)
+            dynamic_ks = torch.clamp(top_k_ious.sum(dim=1).int(), min=1)
 
-            # One-hot encode of all target classes of image, repeated for all selected preds (dim num_targets x num_preds x num_classes)
-            gt_cls_per_image = (
-                F.one_hot(this_target[:, 1].to(torch.int64), self.nc)
-                .float()
-                .unsqueeze(dim=1)
-                .repeat(1, pxyxys.shape[0], 1)
+            target_class_scores = (
+                F.one_hot(image_targets[:, TargetIdx.CLS_ID].long(), self.nc).float()
+                .unsqueeze(dim=1).repeat(1, num_image_preds, 1)
             )
-
-            num_gt = this_target.shape[0]
-            # All boxes repeated per each gt and class probs are sigmoid(cls_prob output) * sigmoid(objectness)
-            # TODO: Can sigmoid be done before repeating? Faster? Fucks gradient?
-            cls_preds_ = (
-                p_cls.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
-                * p_obj.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
+            pred_class_scores = (
+                (pred_class_scores.sigmoid_() * pred_objectness.sigmoid_())
+                .unsqueeze(dim=0).repeat(num_image_targets, 1, 1)
             )
+            # TODO: This was the prev version, if gradients do not seem to learn, we may need to
+            #   recover the order of operations.
+            # cls_preds_ = (
+            #     pred_class_scores.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
+            #     * pred_objectness.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
+            # )
 
-            # Sqrt of that multiplication?? Whyyyyy?
-            y = cls_preds_.sqrt_()
-            # This is insane
+            # TODO: Find the paper where this is defined
+            pred_class_scores = pred_class_scores.sqrt_()
+            pred_class_scores = torch.log(pred_class_scores / (1 - pred_class_scores))
             pair_wise_cls_loss = F.binary_cross_entropy_with_logits(
-                torch.log(y / (1 - y)), gt_cls_per_image, reduction="none"
+                pred_class_scores, target_class_scores, reduction="none"
             ).sum(-1)
-            del cls_preds_
+            # del cls_preds_
 
-            cost = pair_wise_cls_loss + 3.0 * pair_wise_iou_loss
+            # TODO: This 3.0 is probably a constant that should be named
+            cost = pair_wise_cls_loss + 3.0 * pair_wise_iou_loss  # num_targets x num_preds
 
-            matching_matrix = torch.zeros_like(cost)
+            match_matrix = torch.zeros_like(cost).long()
 
-            for gt_idx in range(num_gt):
+            for target_idx in range(num_image_targets):
                 # For each gt, assign k boxes with lowest cost. K comes from sum of IoU above.
-                _, pos_idx = torch.topk(
-                    cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False
-                )
-                # Assignation matrix. Note at this point, multiple boxes can be assigned to same target
-                matching_matrix[gt_idx][pos_idx] = 1.0
+                target_k = dynamic_ks[target_idx].item()
+                _, pred_idxs = torch.topk(cost[target_idx], k=target_k, largest=False)
+                match_matrix[target_idx][pred_idxs] = 1
 
-            del top_k, dynamic_ks
-            anchor_matching_gt = matching_matrix.sum(0)
-            # Check if any pred box is assigned more than once
-            if (anchor_matching_gt > 1).sum() > 0:
-                # Find to what target, the box multiple assigned, has lowest cost
-                _, cost_argmin = torch.min(cost[:, anchor_matching_gt > 1], dim=0)
-                # Correct so only the target with min cost gets the box assigned
-                matching_matrix[:, anchor_matching_gt > 1] *= 0.0
-                matching_matrix[cost_argmin, anchor_matching_gt > 1] = 1.0
-            fg_mask_inboxes = matching_matrix.sum(0) > 0.0
-            # For each box, get target idx where it is assigned to
-            matched_gt_inds = matching_matrix[:, fg_mask_inboxes].argmax(0)
+            # del top_k, dynamic_ks
+            num_targets_per_pred = match_matrix.sum(dim=0)
+            is_ambigous_pred = num_targets_per_pred > 1
+            if is_ambigous_pred.sum() > 0:
+                _, min_cost_target_idxs = torch.min(cost[:, is_ambigous_pred], dim=0)
+                match_matrix[:, is_ambigous_pred] = 0  # TODO: This was *=, gradient impact?
+                match_matrix[min_cost_target_idxs, is_ambigous_pred] = 1
+            pred_is_matched = match_matrix.sum(dim=0) > 0
+            pred_matched_target_idxs = match_matrix[:, pred_is_matched].argmax(dim=0)
 
             # Keep only prediction boxes selected by the dynamic ks
-            from_which_layer = from_which_layer[fg_mask_inboxes]
-            all_b = all_b[fg_mask_inboxes]
-            all_a = all_a[fg_mask_inboxes]
-            all_gj = all_gj[fg_mask_inboxes]
-            all_gi = all_gi[fg_mask_inboxes]
-            all_anch = all_anch[fg_mask_inboxes]
+            layer_idxs = layer_idxs[pred_is_matched]
+            image_idxs = image_idxs[pred_is_matched]
+            anchor_box_idxs = anchor_box_idxs[pred_is_matched]
+            grid_j = grid_j[pred_is_matched]
+            grid_i = grid_i[pred_is_matched]
+            anchor_boxes = anchor_boxes[pred_is_matched]
 
             # Duplicate targets as many times as boxes assigned, tensor has size of finally assigned boxes
-            this_target = this_target[matched_gt_inds]
+            image_targets = image_targets[pred_matched_target_idxs]
 
-            for i in range(nl):
+            for layer_idx in range(num_fpn_heads):
                 # Split the selected boxes by layer (all matching lists are lists of tensors here)
-                layer_idx = from_which_layer == i
-                matching_bs[i].append(all_b[layer_idx])
-                matching_as[i].append(all_a[layer_idx])
-                matching_gjs[i].append(all_gj[layer_idx])
-                matching_gis[i].append(all_gi[layer_idx])
-                matching_targets[i].append(this_target[layer_idx])
-                matching_anchs[i].append(all_anch[layer_idx])
+                is_this_layer = layer_idxs == layer_idx
+                matching_image_idxs[layer_idx].append(image_idxs[is_this_layer])
+                matching_anchor_idxs[layer_idx].append(anchor_box_idxs[is_this_layer])
+                matching_grid_j[layer_idx].append(grid_j[is_this_layer])
+                matching_grid_i[layer_idx].append(grid_i[is_this_layer])
+                matching_targets[layer_idx].append(image_targets[is_this_layer])
+                matching_anchor_boxes[layer_idx].append(anchor_boxes[is_this_layer])
 
         # At the end, not in image by image loop
-        for i in range(nl):
+        for layer_idx in range(num_fpn_heads):
             # If any box assigned from the layer
-            if matching_targets[i] != []:
+            if matching_targets[layer_idx] != []:
                 # Concatenate boxes for each image in this layer (that is why we needed bs vecs)
-                matching_bs[i] = torch.cat(matching_bs[i], dim=0)
-                matching_as[i] = torch.cat(matching_as[i], dim=0)
-                matching_gjs[i] = torch.cat(matching_gjs[i], dim=0)
-                matching_gis[i] = torch.cat(matching_gis[i], dim=0)
-                matching_targets[i] = torch.cat(matching_targets[i], dim=0)
-                matching_anchs[i] = torch.cat(matching_anchs[i], dim=0)
+                matching_image_idxs[layer_idx] = torch.cat(matching_image_idxs[layer_idx], dim=0)
+                matching_anchor_idxs[layer_idx] = torch.cat(matching_anchor_idxs[layer_idx], dim=0)
+                matching_grid_j[layer_idx] = torch.cat(matching_grid_j[layer_idx], dim=0)
+                matching_grid_i[layer_idx] = torch.cat(matching_grid_i[layer_idx], dim=0)
+                matching_targets[layer_idx] = torch.cat(matching_targets[layer_idx], dim=0)
+                matching_anchor_boxes[layer_idx] = torch.cat(matching_anchor_boxes[layer_idx], dim=0)
             else:
-                matching_bs[i] = torch.tensor(
+                matching_image_idxs[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_as[i] = torch.tensor(
+                matching_anchor_idxs[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_gjs[i] = torch.tensor(
+                matching_grid_j[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_gis[i] = torch.tensor(
+                matching_grid_i[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_targets[i] = torch.tensor(
+                matching_targets[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
-                matching_anchs[i] = torch.tensor(
+                matching_anchor_boxes[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64
                 )
 
         return (
-            matching_bs,
-            matching_as,
-            matching_gjs,
-            matching_gis,
+            matching_image_idxs,
+            matching_anchor_idxs,
+            matching_grid_j,
+            matching_grid_i,
             matching_targets,
-            matching_anchs,
+            matching_anchor_boxes,
         )
 
 

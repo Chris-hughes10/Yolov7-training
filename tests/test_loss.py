@@ -4,7 +4,7 @@ import pickle
 import pytest
 import torch
 
-from yolov7.loss_factory import create_yolov7_loss
+from yolov7.loss_factory import create_yolov7_loss, create_yolov7_loss_orig
 
 
 
@@ -75,18 +75,26 @@ def batch_loss_inputs():
 def test_loss(batch, ota_loss, aux_loss, expected_loss, expected_loss_items, batch_loss_inputs):
     model = FakeModel()
     loss_func = create_yolov7_loss(model, ota_loss=ota_loss, aux_loss=aux_loss)
+    prev_loss_func = create_yolov7_loss_orig(model, ota_loss=ota_loss, aux_loss=aux_loss)
     expected_loss = torch.tensor([expected_loss])
     expected_loss_items = torch.tensor(expected_loss_items)
 
 
-    model_outputs = batch_loss_inputs[batch]["model_outputs"]
+    model_outputs = [o.detach().clone().requires_grad_() for o in batch_loss_inputs[batch]["model_outputs"]]
     labels = batch_loss_inputs[batch]["labels"]
     images = batch_loss_inputs[batch]["images"]
     if not aux_loss:
         # Only the aux loss requires the aux head outputs, for the rest we strip them
          model_outputs = model_outputs[:model.model[-1].nl]
+    prev_model_outputs = [o.detach().clone().requires_grad_() for o in model_outputs]
 
     loss, loss_items = loss_func(p=model_outputs, targets=labels, imgs=images)
+    prev_loss, prev_loss_items = prev_loss_func(p=prev_model_outputs, targets=labels, imgs=images)
 
     assert (loss.round(decimals=5) == expected_loss.round(decimals=5)).all().item()
     assert (loss_items.round(decimals=5) == expected_loss_items.round(decimals=5)).all().item()
+
+    loss.backward()
+    prev_loss.backward()
+    for i in range(len(model_outputs)):
+        assert (model_outputs[i].grad == prev_model_outputs[i].grad).all()

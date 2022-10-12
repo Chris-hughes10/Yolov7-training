@@ -157,8 +157,6 @@ class FocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
-<<<<<<< HEAD
-=======
 def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.tensor:
     """Transform model raw outputs into proper cx, cy, w, h
 
@@ -184,7 +182,6 @@ def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.ten
 
 
 class ComputeYolov7Loss:
->>>>>>> 0274a92 (More progress)
 
 class ComputeYolov7Loss:
     def __init__(self, model, autobalance=False):
@@ -532,6 +529,31 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
         self.stride = det.stride
         self.min_for_top_k = 10 # Waiting understanding for better naming
 
+
+    def __call__(self, p, targets, **kwargs):  # predictions, targets, model
+        device = targets.device
+        lcls, lbox, lobj = (
+            torch.zeros(1, device=device),
+            torch.zeros(1, device=device),
+            torch.zeros(1, device=device),
+        )
+        #####
+
+        tobj = self.compute_losses(p=p, targets=targets, lcls=lcls, lbox=lbox,
+                                   lobj=lobj, device=device, **kwargs)
+
+        ###
+        if self.autobalance:
+            self.balance = [x / self.balance[self.ssi] for x in self.balance]
+        lbox *= self.hyp["box"]
+        lobj *= self.hyp["obj"]
+        lcls *= self.hyp["cls"]
+        bs = tobj.shape[0]  # batch size
+
+        loss = lbox + lobj + lcls
+        return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
+
+
     def compute_losses(self, p, targets, imgs, lcls, lbox, lobj, device, **kwargs):
         """This can probably be unified with the base class if build targets returns built boxes
         with their class, same as find_n_positive."""
@@ -759,10 +781,12 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             matching_anchs,
         )
 
-    def find_predicted_boxes(self, p, targets, imgs, n_anchor_per_gt=3):
+    def build_targets(self, p, targets, imgs, n_anchor_per_gt=3):
+        """Start with selected boxes as regular loss, but then, for each image, treat it as an OTA
+        problem and select less boxes based on cost. Return those."""
 
         # _, _, indices, anch = self.find_n_positive(p, targets, n_anchor_per_gt=n_anchor_per_gt)
-        _, _, indices, anch = super().find_predicted_boxes(p, targets, n_anchors_per_target=n_anchor_per_gt)
+        _, _, indices, anch = self.find_predicted_boxes(p, targets, n_anchors_per_target=n_anchor_per_gt)
 
         matching_bs = [[] for pp in p]
         matching_as = [[] for pp in p]
@@ -773,14 +797,19 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
 
         nl = len(p)
 
+        # For each image
         for batch_idx in range(p[0].shape[0]):
 
             b_idx = targets[:, 0] == batch_idx
+            # Targets corresponding to the current image
             this_target = targets[b_idx]
+            # Image without targets
             if this_target.shape[0] == 0:
                 continue
 
+            # Convert from cxcywh normalized to image coordinates cxcywh
             txywh = this_target[:, 2:6] * imgs[batch_idx].shape[1]
+            # Convert to xyxy image coordinates
             txyxy = xywh2xyxy(txywh)
 
             pxyxys = []
@@ -793,71 +822,91 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             all_gi = []
             all_anch = []
 
+            # For each fpn head
             for i, pi in enumerate(p):
 
+                # batch_idx, anchor_idx, grid j, grid i
                 b, a, gj, gi = indices[i]
+                # Select susbset corresponding to current image
                 idx = b == batch_idx
                 b, a, gj, gi = b[idx], a[idx], gj[idx], gi[idx]
-                all_b.append(b)
-                all_a.append(a)
-                all_gj.append(gj)
-                all_gi.append(gi)
-                all_anch.append(anch[i][idx])
-                from_which_layer.append(torch.ones(size=(len(b),)) * i)
+                all_b.append(b) # batch idx
+                all_a.append(a) # anchor idx
+                all_gj.append(gj) # grid j
+                all_gi.append(gi) # grid i
+                all_anch.append(anch[i][idx]) # anchors (w,h)
+                from_which_layer.append(torch.ones(size=(len(b),)) * i) # layer_idx
 
+                # Candidate anchors for this layer and image
                 fg_pred = pi[b, a, gj, gi]
-                p_obj.append(fg_pred[:, 4:5])
-                p_cls.append(fg_pred[:, 5:])
+                p_obj.append(fg_pred[:, 4:5]) # objectness
+                p_cls.append(fg_pred[:, 5:]) # class probs
 
-                grid = torch.stack([gi, gj], dim=1)
+                grid = torch.stack([gi, gj], dim=1) # anchor points for the image and layer
                 # Sigmoid (-inf, inf) -> (0, 1) interval
                 #   * 2 -> (0, 2) interval
                 #   - 0.5 -> (-0.5, 1.5) interval
+                # First grid coordinates, then image coordinates
                 pxy = (fg_pred[:, :2].sigmoid() * 2.0 - 0.5 + grid) * self.stride[
                     i
                 ]  # / 8.
                 # pxy = (fg_pred[:, :2].sigmoid() * 3. - 1. + grid) * self.stride[i]
                 # (-inf, inf) -> (0, 4) (which coincides with anchor_t param)
+                # First to grid coordinates, then to image coordiates
                 pwh = (
                     (fg_pred[:, 2:4].sigmoid() * 2) ** 2 * anch[i][idx] * self.stride[i]
                 )  # / 8.
+                # Image coordinates cxcywh
                 pxywh = torch.cat([pxy, pwh], dim=-1)
+                # Image coordinates xyxy
                 pxyxy = xywh2xyxy(pxywh)
                 pxyxys.append(pxyxy)
 
+            # All candidate boxes, from all layers, for current image (N x 4, xyxy)
             pxyxys = torch.cat(pxyxys, dim=0)
             if pxyxys.shape[0] == 0:
                 continue
+            # All objectness preds for the boxes across all layers, current image (Nx1)
             p_obj = torch.cat(p_obj, dim=0)
+            # All class preds for the boxes across all layers, current image (Nxn_class)
             p_cls = torch.cat(p_cls, dim=0)
+            # Layer idx for each box, (Nx1)
             from_which_layer = torch.cat(from_which_layer, dim=0)
-            all_b = torch.cat(all_b, dim=0)
-            all_a = torch.cat(all_a, dim=0)
-            all_gj = torch.cat(all_gj, dim=0)
-            all_gi = torch.cat(all_gi, dim=0)
-            all_anch = torch.cat(all_anch, dim=0)
+            all_b = torch.cat(all_b, dim=0)  # Basically same idx for all
+            all_a = torch.cat(all_a, dim=0)  # Anchor idxs each box comes from, layer matters
+            all_gj = torch.cat(all_gj, dim=0)  # Grid j, but grid depends on layer
+            all_gi = torch.cat(all_gi, dim=0)  # Grod i, but grid depends on layer
+            all_anch = torch.cat(all_anch, dim=0)  # Anchor boxes wh in image coordinates (not modified by model)
 
+            # box iou across all each target with selected boxes for it in image (NOT CIoU!!)
             pair_wise_iou = box_iou(txyxy, pxyxys)
 
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
 
+            # Select top k IoU, where k is either the param or all of them
             top_k, _ = torch.topk(pair_wise_iou, min(self.min_for_top_k, pair_wise_iou.shape[1]), dim=1)
+            # ? Sum of top IoUs truncated to int.
             dynamic_ks = torch.clamp(top_k.sum(1).int(), min=1)
 
+            # One-hot encode of all target classes of image, repeated for all selected preds (dim num_targets x num_preds x num_classes)
             gt_cls_per_image = (
                 F.one_hot(this_target[:, 1].to(torch.int64), self.nc)
                 .float()
-                .unsqueeze(1)
+                .unsqueeze(dim=1)
                 .repeat(1, pxyxys.shape[0], 1)
             )
 
             num_gt = this_target.shape[0]
+            # All boxes repeated per each gt and class probs are sigmoid(cls_prob output) * sigmoid(objectness)
+            # TODO: Can sigmoid be done before repeating? Faster? Fucks gradient?
             cls_preds_ = (
                 p_cls.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
                 * p_obj.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
             )
 
+            # Sqrt of that multiplication?? Whyyyyy?
             y = cls_preds_.sqrt_()
+            # This is insane
             pair_wise_cls_loss = F.binary_cross_entropy_with_logits(
                 torch.log(y / (1 - y)), gt_cls_per_image, reduction="none"
             ).sum(-1)
@@ -868,20 +917,27 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             matching_matrix = torch.zeros_like(cost)
 
             for gt_idx in range(num_gt):
+                # For each gt, assign k boxes with lowest cost. K comes from sum of IoU above.
                 _, pos_idx = torch.topk(
                     cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False
                 )
+                # Assignation matrix. Note at this point, multiple boxes can be assigned to same target
                 matching_matrix[gt_idx][pos_idx] = 1.0
 
             del top_k, dynamic_ks
             anchor_matching_gt = matching_matrix.sum(0)
+            # Check if any pred box is assigned more than once
             if (anchor_matching_gt > 1).sum() > 0:
+                # Find to what target, the box multiple assigned, has lowest cost
                 _, cost_argmin = torch.min(cost[:, anchor_matching_gt > 1], dim=0)
+                # Correct so only the target with min cost gets the box assigned
                 matching_matrix[:, anchor_matching_gt > 1] *= 0.0
                 matching_matrix[cost_argmin, anchor_matching_gt > 1] = 1.0
             fg_mask_inboxes = matching_matrix.sum(0) > 0.0
+            # For each box, get target idx where it is assigned to
             matched_gt_inds = matching_matrix[:, fg_mask_inboxes].argmax(0)
 
+            # Keep only prediction boxes selected by the dynamic ks
             from_which_layer = from_which_layer[fg_mask_inboxes]
             all_b = all_b[fg_mask_inboxes]
             all_a = all_a[fg_mask_inboxes]
@@ -889,9 +945,11 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             all_gi = all_gi[fg_mask_inboxes]
             all_anch = all_anch[fg_mask_inboxes]
 
+            # Duplicate targets as many times as boxes assigned, tensor has size of finally assigned boxes
             this_target = this_target[matched_gt_inds]
 
             for i in range(nl):
+                # Split the selected boxes by layer (all matching lists are lists of tensors here)
                 layer_idx = from_which_layer == i
                 matching_bs[i].append(all_b[layer_idx])
                 matching_as[i].append(all_a[layer_idx])
@@ -900,8 +958,11 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
                 matching_targets[i].append(this_target[layer_idx])
                 matching_anchs[i].append(all_anch[layer_idx])
 
+        # At the end, not in image by image loop
         for i in range(nl):
+            # If any box assigned from the layer
             if matching_targets[i] != []:
+                # Concatenate boxes for each image in this layer (that is why we needed bs vecs)
                 matching_bs[i] = torch.cat(matching_bs[i], dim=0)
                 matching_as[i] = torch.cat(matching_as[i], dim=0)
                 matching_gjs[i] = torch.cat(matching_gjs[i], dim=0)

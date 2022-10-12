@@ -62,6 +62,7 @@ class Yolov7Trainer(Trainer):
         self.filter_eval_predictions = filter_eval_predictions_fn
 
     def training_run_start(self):
+        # TODO move to loss fn
         self.loss_func.BCEcls.to(self.device)
         self.loss_func.BCEobj.to(self.device)
         self.loss_func.anchors = self.loss_func.anchors.to(self.device)
@@ -71,6 +72,7 @@ class Yolov7Trainer(Trainer):
         self.eval_loss_func.anchors = self.eval_loss_func.anchors.to(self.device)
 
     def evaluation_run_start(self):
+        # TODO move to loss fn
         self.loss_func.BCEcls.to(self.device)
         self.loss_func.BCEobj.to(self.device)
         self.loss_func.anchors = self.loss_func.anchors.to(self.device)
@@ -100,9 +102,10 @@ class Yolov7Trainer(Trainer):
                 batch[3].cpu(),
             )
             model_outputs = self.model(images)
-
             inference_outputs, rpn_outputs = model_outputs
+
             val_loss, loss_items = self.eval_loss_func(p=rpn_outputs, targets=labels)
+
             preds = process_yolov7_outputs(
                 model_outputs,
             )

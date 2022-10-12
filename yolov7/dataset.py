@@ -37,7 +37,6 @@ def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=Fa
             border_mode=0,
             value=(114, 114, 114),
         ),
-        # A.Resize(640, 640)
     ]
 
     if training:
@@ -96,7 +95,6 @@ class Yolov7Dataset(Dataset):
             boxes = torchvision.ops.box_convert(
                 torch.as_tensor(boxes, dtype=torch.float32), "xyxy", "cxcywh"
             )
-            # boxes = convert_xyxy_to_cxcywh(boxes)
             boxes[:, [1, 3]] /= image.shape[0]  # normalized height 0-1
             boxes[:, [0, 2]] /= image.shape[1]  # normalized width 0-1
             classes = np.expand_dims(classes, 1)

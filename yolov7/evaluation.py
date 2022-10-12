@@ -256,7 +256,7 @@ class CalculateMetricsCallback(TrainerCallback):
 
     def on_eval_epoch_end(self, trainer, **kwargs):
         preds_df = pd.DataFrame(
-            torch.as_tensor(self.eval_predictions),
+            self.eval_predictions,
             columns=["xmin", "ymin", "xmax", "ymax", "score", "class_id", "image_id"],
         )
 

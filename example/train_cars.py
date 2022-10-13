@@ -9,7 +9,7 @@ from pytorch_accelerated.callbacks import get_default_callbacks, SaveBestModelCa
 from pytorch_accelerated.schedulers import CosineLrScheduler
 from torch import nn
 
-from example.data import DatasetAdaptor, load_cars_df
+from example.cars_data_utils import DatasetAdaptor, load_cars_df
 from yolov7 import create_yolov7_model
 from yolov7.dataset import (
     create_base_transforms,

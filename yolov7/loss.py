@@ -778,31 +778,31 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
         self.min_for_top_k = 10 # Waiting understanding for better naming
 
 
-    def __call__(self, p, targets, **kwargs):  # predictions, targets, model
-        device = targets.device
-        lcls, lbox, lobj = (
-            torch.zeros(1, device=device),
-            torch.zeros(1, device=device),
-            torch.zeros(1, device=device),
-        )
-        #####
+    # def __call__(self, p, targets, **kwargs):  # predictions, targets, model
+    #     device = targets.device
+    #     lcls, lbox, lobj = (
+    #         torch.zeros(1, device=device),
+    #         torch.zeros(1, device=device),
+    #         torch.zeros(1, device=device),
+    #     )
+    #     #####
 
-        tobj = self.compute_losses(p=p, targets=targets, lcls=lcls, lbox=lbox,
-                                   lobj=lobj, device=device, **kwargs)
+    #     tobj = self.compute_losses(p=p, targets=targets, lcls=lcls, lbox=lbox,
+    #                                lobj=lobj, device=device, **kwargs)
 
-        ###
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
-        lbox *= self.hyp["box"]
-        lobj *= self.hyp["obj"]
-        lcls *= self.hyp["cls"]
-        bs = tobj.shape[0]  # batch size
+    #     ###
+    #     if self.autobalance:
+    #         self.balance = [x / self.balance[self.ssi] for x in self.balance]
+    #     lbox *= self.hyp["box"]
+    #     lobj *= self.hyp["obj"]
+    #     lcls *= self.hyp["cls"]
+    #     bs = tobj.shape[0]  # batch size
 
-        loss = lbox + lobj + lcls
-        return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
+    #     loss = lbox + lobj + lcls
+    #     return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
 
 
-    def compute_losses(self, p, targets, imgs, lcls, lbox, lobj, device, **kwargs):
+    def old_compute_losses(self, p, targets, imgs, lcls, lbox, lobj, device, **kwargs):
         """This can probably be unified with the base class if build targets returns built boxes
         with their class, same as find_n_positive."""
         # bs, as_, gjs, gis, targets, anchors = self.prev_build_targets(p, targets, imgs)
@@ -1365,12 +1365,24 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
         for layer_idx in range(num_fpn_heads):
             # If any box assigned from the layer
             if matched_targets_per_layer[layer_idx]:
-                matched_targets_per_layer[layer_idx] = torch.cat(
-                    matched_targets_per_layer[layer_idx], dim=0
-                )
-                matched_anchor_boxes_per_layer[layer_idx] = torch.cat(
-                    matched_anchor_boxes_per_layer[layer_idx], dim=0
-                )
+                # Note on matrix, rows are y, cols are x (hence 3,2 are inverted)
+                grid_size = torch.tensor(fpn_heads_outputs[layer_idx].shape)[[3, 2]]
+                layer_targets = torch.cat(matched_targets_per_layer[layer_idx], dim=0)
+                layer_anchor_boxes = torch.cat(matched_anchor_boxes_per_layer[layer_idx], dim=0)
+
+                layer_targets[:, [TargetIdx.CX,TargetIdx.W]] *= grid_size[0]
+                layer_targets[:, [TargetIdx.CY,TargetIdx.H]] *= grid_size[1]
+                layer_targets[:, [TargetIdx.CX,TargetIdx.CY]] -= layer_anchor_boxes[:, [AnchorIdx.ROW, AnchorIdx.COL]]
+
+                matched_targets_per_layer[layer_idx] = layer_targets
+                matched_anchor_boxes_per_layer[layer_idx] = layer_anchor_boxes
+
+                # matched_targets_per_layer[layer_idx] = torch.cat(
+                #     matched_targets_per_layer[layer_idx], dim=0
+                # )
+                # matched_anchor_boxes_per_layer[layer_idx] = torch.cat(
+                #     matched_anchor_boxes_per_layer[layer_idx], dim=0
+                # )
             else:
                 matched_targets_per_layer[layer_idx] = torch.tensor(
                     [], device=targets.device, dtype=torch.int64

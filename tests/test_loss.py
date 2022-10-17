@@ -88,7 +88,7 @@ def test_loss(batch, ota_loss, aux_loss, expected_loss, expected_loss_items, bat
          model_outputs = model_outputs[:model.model[-1].nl]
     prev_model_outputs = [o.detach().clone().requires_grad_() for o in model_outputs]
 
-    loss, loss_items = loss_func(p=model_outputs, targets=labels, imgs=images)
+    loss, loss_items = loss_func(model_outputs, targets=labels, images=images)
     prev_loss, prev_loss_items = prev_loss_func(p=prev_model_outputs, targets=labels, imgs=images)
 
     assert (loss.round(decimals=5) == expected_loss.round(decimals=5)).all().item()

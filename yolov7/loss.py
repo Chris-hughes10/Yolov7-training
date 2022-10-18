@@ -189,7 +189,10 @@ def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.ten
     return preds
 
 
-class ComputeYolov7Loss:
+class Yolov7Loss:
+    MIN_PREDS_FOR_OTA_DYNAMIC_K = 10
+    ANCHORS_PER_TARGET = 3
+
     def __init__(self, model, autobalance=False):
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
@@ -231,55 +234,41 @@ class ComputeYolov7Loss:
         self.nc = det.nc
         self.nl = det.nl
         self.anchors = det.anchors
+        self.stride = det.stride
 
+        self.training = True
+        self.train()
 
-    def _compute_fpn_head_losses(self, fpn_head_outputs, anchor_boxes, attempted_targets, device):
-        target_objectness = torch.zeros_like(fpn_head_outputs[..., 0], device=device)
+    def __call__(self, fpn_heads_outputs, targets, images=None):  # predictions, targets, model
+        box_loss, obj_loss, cls_loss = self._compute_losses(
+            fpn_heads_outputs, targets, images=images
+        )
+        if self.autobalance:
+            self.balance = [x / self.balance[self.ssi] for x in self.balance]
 
-        num_anchor_boxes = anchor_boxes.shape[0]
-        if num_anchor_boxes > 0:
-            output_selector = anchor_boxes[:, [AnchorIdx.IMG_IDX, AnchorIdx.ANCHOR_IDX, AnchorIdx.COL, AnchorIdx.ROW]].long().T.tolist()
-            selected_outputs = fpn_head_outputs[output_selector]
+        batch_size = fpn_heads_outputs[0].shape[0]
+        final_loss, loss_items = self._aggregate_losses(box_loss, obj_loss, cls_loss, batch_size)
+        return final_loss, loss_items
 
-            preds = transform_model_outputs_into_predictions(selected_outputs)
-            preds[..., [PredIdx.W, PredIdx.H]] *= anchor_boxes[:, [AnchorIdx.W, AnchorIdx.H]]
-            pred_boxes = preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
-            target_boxes = attempted_targets[..., [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]]
-            # TODO: Transpose is because fun transposes 1 (??), fix when function cleaned
-            iou = bbox_iou(pred_boxes.T, target_boxes, x1y1x2y2=False, CIoU=True)
+    def train(self):
+        self.training = True
+        self._compute_losses = self._compute_losses_for_train
 
-            box_loss = (1.0 - iou).mean()
+    def eval(self):
+        self.training = False
+        self._compute_losses = self._compute_losses_for_eval
 
-            # Objectness
-            # TODO: Why detach? No backprop from IoU? Consider it a constant?
-            target_objectness[output_selector] = (
-                (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(target_objectness.dtype)
-            )
-            # Classification
-            if self.nc > 1:  # cls loss (only if multiple classes)
-                pred_class_probs = preds[..., PredIdx.OBJ+1:]
-                # TODO: SmoothBCE might not be used, drop if neccessary
-                target_class_probs = torch.full_like(pred_class_probs, self.cn, device=device)
-                target_class_ids = attempted_targets[:, TargetIdx.CLS_ID].long()
-                target_class_probs[range(num_anchor_boxes), target_class_ids] = self.cp
-                cls_loss = self.BCEcls(pred_class_probs, target_class_probs)
-        else:
-            box_loss = torch.tensor(0., device=device)
-            cls_loss = torch.tensor(0., device=device)
-
-        pred_objectness = fpn_head_outputs[..., PredIdx.OBJ]
-        obj_loss = self.BCEobj(pred_objectness, target_objectness)
-
-        return box_loss, obj_loss, cls_loss
-
-    def __call__(self, fpn_heads_outputs, targets, **kwargs):  # predictions, targets, model
+    def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
         box_loss = torch.tensor([0.], device=device)
         cls_loss = torch.tensor([0.], device=device)
         obj_loss = torch.tensor([0.], device=device)
 
-        anchor_boxes_per_layer, targets_per_layer = self.find_center_prior(
-            fpn_heads_outputs, targets, n_anchors_per_target=3
+        anchor_boxes_per_layer, _ = self.find_center_prior(
+            fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
+        )
+        anchor_boxes_per_layer, targets_per_layer = self.simOTA_assignment(
+            fpn_heads_outputs, targets, images, anchor_boxes_per_layer
         )
         for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
             layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
@@ -295,17 +284,40 @@ class ComputeYolov7Loss:
                 self.balance[layer_idx] = (
                         self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
                 )
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
+        return box_loss, obj_loss, cls_loss
 
+    def _compute_losses_for_eval(self, fpn_heads_outputs, targets, **_):
+        device = targets.device
+        box_loss = torch.tensor([0.], device=device)
+        cls_loss = torch.tensor([0.], device=device)
+        obj_loss = torch.tensor([0.], device=device)
+
+        anchor_boxes_per_layer, targets_per_layer = self.find_center_prior(
+            fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
+        )
+        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
+            layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
+                fpn_head_outputs=fpn_head_outputs,
+                anchor_boxes=anchor_boxes_per_layer[layer_idx],
+                attempted_targets=targets_per_layer[layer_idx],
+                device=device
+            )
+            box_loss += layer_box_loss
+            cls_loss += layer_cls_loss
+            obj_loss += layer_obj_loss * self.balance[layer_idx]
+            if self.autobalance:
+                self.balance[layer_idx] = (
+                        self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
+                )
+        return box_loss, obj_loss, cls_loss
+
+    def _aggregate_losses(self, box_loss, obj_loss, cls_loss, batch_size):
         box_loss *= self.hyp["box"]
         obj_loss *= self.hyp["obj"]
         cls_loss *= self.hyp["cls"]
 
-        # TODO: Can we pass it to the loss object once? Do we even need it?
-        batch_size = fpn_heads_outputs[0].shape[0]
-
         loss = box_loss + obj_loss + cls_loss
+        # TODO: Why the batch size scaling?
         final_loss = batch_size * loss
         loss_items = torch.cat([box_loss, obj_loss, cls_loss, loss]).detach()
 
@@ -499,57 +511,6 @@ class ComputeYolov7Loss:
             targets_per_layer.append(layer_targets)
         return anchor_boxes_per_layer, targets_per_layer
 
-
-
-class ComputeYolov7LossOTA(ComputeYolov7Loss):
-    def __init__(self, model, autobalance=False):
-        super().__init__(model, autobalance)
-        det = model.module.model[-1] if is_parallel(model) else model.model[-1]
-        self.stride = det.stride
-        self.min_for_top_k = 10 # Waiting understanding for better naming
-
-    def __call__(self, fpn_heads_outputs, targets, images, **kwargs):
-        device = targets.device
-        box_loss = torch.tensor([0.], device=device)
-        cls_loss = torch.tensor([0.], device=device)
-        obj_loss = torch.tensor([0.], device=device)
-
-        anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs, targets, n_anchors_per_target=3
-        )
-        anchor_boxes_per_layer, targets_per_layer = self.simOTA_assignment(
-            fpn_heads_outputs, targets, images, anchor_boxes_per_layer
-        )
-        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
-            layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
-                fpn_head_outputs=fpn_head_outputs,
-                anchor_boxes=anchor_boxes_per_layer[layer_idx],
-                attempted_targets=targets_per_layer[layer_idx],
-                device=device
-            )
-            box_loss += layer_box_loss
-            cls_loss += layer_cls_loss
-            obj_loss += layer_obj_loss * self.balance[layer_idx]
-            if self.autobalance:
-                self.balance[layer_idx] = (
-                        self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
-                )
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
-
-        box_loss *= self.hyp["box"]
-        obj_loss *= self.hyp["obj"]
-        cls_loss *= self.hyp["cls"]
-
-        # TODO: Can we pass it to the loss object once? Do we even need it?
-        batch_size = fpn_heads_outputs[0].shape[0]
-
-        loss = box_loss + obj_loss + cls_loss
-        final_loss = batch_size * loss
-        loss_items = torch.cat([box_loss, obj_loss, cls_loss, loss]).detach()
-
-        return final_loss, loss_items
-
     def simOTA_assignment(self, fpn_heads_outputs, targets, images, anchor_boxes_per_layer):
         """Start with selected boxes as regular loss, but then, for each image, treat it as an OTA
         problem and select less boxes based on cost. Return those."""
@@ -610,7 +571,7 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)
 
             # Calculate dynamic K per target as defined in the OTA paper
-            k = min(self.min_for_top_k, pair_wise_iou.shape[1])
+            k = min(self.MIN_PREDS_FOR_OTA_DYNAMIC_K, pair_wise_iou.shape[1])
             top_k_ious, _ = torch.topk(pair_wise_iou, k, dim=1)
             dynamic_ks = torch.clamp(top_k_ious.sum(dim=1).int(), min=1)
 
@@ -685,30 +646,67 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
                 )
         return matched_anchor_boxes_per_layer, matched_targets_per_layer
 
+    def _compute_fpn_head_losses(self, fpn_head_outputs, anchor_boxes, attempted_targets, device):
+        target_objectness = torch.zeros_like(fpn_head_outputs[..., 0], device=device)
+
+        num_anchor_boxes = anchor_boxes.shape[0]
+        if num_anchor_boxes > 0:
+            output_selector = anchor_boxes[:, [AnchorIdx.IMG_IDX, AnchorIdx.ANCHOR_IDX, AnchorIdx.COL, AnchorIdx.ROW]].long().T.tolist()
+            selected_outputs = fpn_head_outputs[output_selector]
+
+            preds = transform_model_outputs_into_predictions(selected_outputs)
+            preds[..., [PredIdx.W, PredIdx.H]] *= anchor_boxes[:, [AnchorIdx.W, AnchorIdx.H]]
+            pred_boxes = preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
+            target_boxes = attempted_targets[..., [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]]
+            # TODO: Transpose is because fun transposes 1 (??), fix when function cleaned
+            iou = bbox_iou(pred_boxes.T, target_boxes, x1y1x2y2=False, CIoU=True)
+
+            box_loss = (1.0 - iou).mean()
+
+            # Objectness
+            # TODO: Why detach? No backprop from IoU? Consider it a constant?
+            target_objectness[output_selector] = (
+                (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(target_objectness.dtype)
+            )
+            # Classification
+            if self.nc > 1:  # cls loss (only if multiple classes)
+                pred_class_probs = preds[..., PredIdx.OBJ+1:]
+                # TODO: SmoothBCE might not be used, drop if neccessary
+                target_class_probs = torch.full_like(pred_class_probs, self.cn, device=device)
+                target_class_ids = attempted_targets[:, TargetIdx.CLS_ID].long()
+                target_class_probs[range(num_anchor_boxes), target_class_ids] = self.cp
+                cls_loss = self.BCEcls(pred_class_probs, target_class_probs)
+        else:
+            box_loss = torch.tensor(0., device=device)
+            cls_loss = torch.tensor(0., device=device)
+
+        pred_objectness = fpn_head_outputs[..., PredIdx.OBJ]
+        obj_loss = self.BCEobj(pred_objectness, target_objectness)
+
+        return box_loss, obj_loss, cls_loss
 
 
-class ComputeYolov7LossAuxOTA(ComputeYolov7LossOTA):
+class Yolov7LossWithAux(Yolov7Loss):
 
     AUX_WEIGHT = 0.25
+    MIN_PREDS_FOR_OTA_DYNAMIC_K = 20
+    ANCHORS_PER_TARGET = 3
+    AUX_ANCHORS_PER_TARGET = 5
 
-    def __init__(self, model, autobalance=False):
-        super().__init__(model, autobalance)
-        self.min_for_top_k = 20 # Waiting understanding for better naming
-
-    def __call__(self, fpn_heads_outputs, targets, images, **kwargs):
+    def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
         box_loss = torch.tensor([0.], device=device)
         cls_loss = torch.tensor([0.], device=device)
         obj_loss = torch.tensor([0.], device=device)
 
         anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=3
+            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
         )
         anchor_boxes_per_layer, targets_per_layer = self.simOTA_assignment(
             fpn_heads_outputs[:self.nl], targets, images, anchor_boxes_per_layer
         )
         aux_anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=5
+            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=self.AUX_ANCHORS_PER_TARGET
         )
         aux_anchor_boxes_per_layer, aux_targets_per_layer = self.simOTA_assignment(
             fpn_heads_outputs[:self.nl], targets, images, aux_anchor_boxes_per_layer
@@ -736,23 +734,8 @@ class ComputeYolov7LossAuxOTA(ComputeYolov7LossOTA):
                 self.balance[layer_idx] = (
                         self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
                 )
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
-
-        box_loss *= self.hyp["box"]
-        obj_loss *= self.hyp["obj"]
-        cls_loss *= self.hyp["cls"]
-
-        # TODO: Can we pass it to the loss object once? Do we even need it?
-        batch_size = fpn_heads_outputs[0].shape[0]
-
-        loss = box_loss + obj_loss + cls_loss
-        final_loss = batch_size * loss
-        loss_items = torch.cat([box_loss, obj_loss, cls_loss, loss]).detach()
-
-        return final_loss, loss_items
+        return box_loss, obj_loss, cls_loss
 
 
-# TODO: Two classes (basic OTA and aux OTA). Both you can disable fancy stuff.
 # TODO: Move hyps into the loss, remove unused.
 # TODO: To method to reproduce trainer behavior start run.

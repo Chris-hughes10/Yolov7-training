@@ -38,6 +38,7 @@ class FakeModel:
     """
     model = [FakeDetector()]
     nc = 2
+    device = torch.device("cpu")
 
     def parameters(self):
         class Dummy:
@@ -97,4 +98,4 @@ def test_loss(batch, ota_loss, aux_loss, expected_loss, expected_loss_items, bat
     loss.backward()
     prev_loss.backward()
     for i in range(len(model_outputs)):
-        assert (model_outputs[i].grad == prev_model_outputs[i].grad).all()
+        assert (model_outputs[i].grad.round(decimals=5) == prev_model_outputs[i].grad.round(decimals=5)).all()

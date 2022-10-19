@@ -12,6 +12,9 @@ from yolov7.migrated.utils.general import (
 )
 from yolov7.migrated.utils.torch_utils import is_parallel
 
+ORIG_IMAGE_SIZE = 640  # Image size used for original training of Yolov7
+COCO_NUM_CLASSES = 80  # Original model was trained on COCO MS dataset
+
 class TargetIdx:
     """Provide names for the each tensor idx for what constitutes a target"""
     IMG_IDX = 0  # Image index in batch
@@ -128,43 +131,6 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=
         return iou  # IoU
 
 
-def smooth_BCE(
-    eps=0.1,
-):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
-    # return positive, negative label smoothing BCE targets
-    return 1.0 - 0.5 * eps, 0.5 * eps
-
-
-class FocalLoss(nn.Module):
-    # Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)
-    def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
-        super(FocalLoss, self).__init__()
-        self.loss_fcn = loss_fcn  # must be nn.BCEWithLogitsLoss()
-        self.gamma = gamma
-        self.alpha = alpha
-        self.reduction = loss_fcn.reduction
-        self.loss_fcn.reduction = "none"  # required to apply FL to each element
-
-    def forward(self, pred, true):
-        loss = self.loss_fcn(pred, true)
-        # p_t = torch.exp(-loss)
-        # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
-
-        # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
-        pred_prob = torch.sigmoid(pred)  # prob from logits
-        # I believe p_t is actually equal to loss (unless pytorch applies log to p_t, which according to docs doesnt look like)
-        p_t = true * pred_prob + (1 - true) * (1 - pred_prob)
-        alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
-        modulating_factor = (1.0 - p_t) ** self.gamma
-        loss *= alpha_factor * modulating_factor
-
-        if self.reduction == "mean":
-            return loss.mean()
-        elif self.reduction == "sum":
-            return loss.sum()
-        else:  # 'none'
-            return loss
-
 def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.tensor:
     """Transform moraw outputs into proper cx, cy, w, h
 
@@ -193,48 +159,39 @@ class Yolov7Loss:
     MIN_PREDS_FOR_OTA_DYNAMIC_K = 10
     ANCHORS_PER_TARGET = 3
 
-    def __init__(self, model, autobalance=False):
-        device = next(model.parameters()).device  # get model device
-        h = model.hyp  # hyperparameters
+    def __init__(
+        self,
+        model,
+        image_size=ORIG_IMAGE_SIZE,
+        box_loss_weight=0.05,
+        cls_loss_weight=0.3,
+        obj_loss_weight=0.7,
+        max_anchor_box_target_size_ratio=4
+        ):
 
-        # Define criteria
-        self.BCEcls = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor([h["cls_pw"]], device=device)
-        )
-        self.BCEobj = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor([h["obj_pw"]], device=device)
-        )
+        detection_head = model.module.model[-1] if is_parallel(model) else model.model[-1]
+        self.num_layers = detection_head.nl
+        self.anchor_sizes_per_layer = detection_head.anchors
+        self.stride_per_layer = detection_head.stride
+        self.num_anchor_sizes = detection_head.na
+        self.num_classes = detection_head.nc
 
-        # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        # cp -> Value used as prob for positive (1.0)
-        # cn -> Value used as prob for negative (0.0)
-        self.cp, self.cn = smooth_BCE(
-            eps=h.get("label_smoothing", 0.0)
-        )  # positive, negative BCE targets
+        # Hardcoded in the original Yolov7 code released with the paper
+        if self.num_layers == 3:
+            self.obj_loss_layer_weights = [4.0, 1.0, 0.4]
+        else:
+            self.obj_loss_layer_weights = [4.0, 1.0, 0.25, 0.06, 0.02]
 
-        # Focal loss
-        # TODO: Kill it with fire.
-        g = h["fl_gamma"]  # focal loss gamma
-        if g > 0:
-            self.BCEcls = FocalLoss(self.BCEcls, g)
-            self.BCEobj = FocalLoss(self.BCEobj, g)
+        layer_factor = 3.0 / self.num_layers
+        image_size_factor = (image_size / ORIG_IMAGE_SIZE) ** 2
+        num_classes_factor = self.num_classes / COCO_NUM_CLASSES
+        self.box_loss_weight = box_loss_weight * layer_factor
+        self.obj_loss_weight = obj_loss_weight * image_size_factor * layer_factor
+        self.cls_loss_weight = cls_loss_weight * num_classes_factor * layer_factor
 
-        det = (
-            model.module.model[-1] if is_parallel(model) else model.model[-1]
-        )  # Detect() module
-        self.balance = {3: [4.0, 1.0, 0.4]}.get(
-            det.nl, [4.0, 1.0, 0.25, 0.06, 0.02]
-        )  # P3-P7
+        self.max_anchor_box_target_size_ratio = max_anchor_box_target_size_ratio
 
-        self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
-        self.gr = model.gr
-        self.hyp = h
-        self.autobalance = autobalance
-        self.na = det.na
-        self.nc = det.nc
-        self.nl = det.nl
-        self.anchors = det.anchors
-        self.stride = det.stride
+        self.BCEwithLogits = nn.BCEWithLogitsLoss().to(model.device)
 
         self.training = True
         self.train()
@@ -243,8 +200,6 @@ class Yolov7Loss:
         box_loss, obj_loss, cls_loss = self._compute_losses(
             fpn_heads_outputs, targets, images=images
         )
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
 
         batch_size = fpn_heads_outputs[0].shape[0]
         final_loss, loss_items = self._aggregate_losses(box_loss, obj_loss, cls_loss, batch_size)
@@ -279,11 +234,7 @@ class Yolov7Loss:
             )
             box_loss += layer_box_loss
             cls_loss += layer_cls_loss
-            obj_loss += layer_obj_loss * self.balance[layer_idx]
-            if self.autobalance:
-                self.balance[layer_idx] = (
-                        self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
-                )
+            obj_loss += layer_obj_loss * self.obj_loss_layer_weights[layer_idx]
         return box_loss, obj_loss, cls_loss
 
     def _compute_losses_for_eval(self, fpn_heads_outputs, targets, **_):
@@ -304,17 +255,13 @@ class Yolov7Loss:
             )
             box_loss += layer_box_loss
             cls_loss += layer_cls_loss
-            obj_loss += layer_obj_loss * self.balance[layer_idx]
-            if self.autobalance:
-                self.balance[layer_idx] = (
-                        self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
-                )
+            obj_loss += layer_obj_loss * self.obj_loss_layer_weights[layer_idx]
         return box_loss, obj_loss, cls_loss
 
     def _aggregate_losses(self, box_loss, obj_loss, cls_loss, batch_size):
-        box_loss *= self.hyp["box"]
-        obj_loss *= self.hyp["obj"]
-        cls_loss *= self.hyp["cls"]
+        box_loss *= self.box_loss_weight
+        obj_loss *= self.obj_loss_weight
+        cls_loss *= self.cls_loss_weight
 
         loss = box_loss + obj_loss + cls_loss
         # TODO: Why the batch size scaling?
@@ -370,7 +317,7 @@ class Yolov7Loss:
             - indices_per_layer: Tuple with indices that we will need down the line:
                 - image_idxs: Index of the image in batch where the box belongs to.
                 - used_anchor_box_idxs: Index of anchor box that corresponds to each selected box.
-                    The index comes from the position in self.anchors[fpn_idx] the box comes from.
+                    The index comes from the position in self.anchor_sizes_per_layer[fpn_idx] the box comes from.
                 - ta_grid_xtr_j: Grid row index for the selected anchor box.
                 - ta_grid_xtr_i: Grid column index for the selected anchor box.
             - used_anchor_boxes_per_layer: w,h of the anchor box.
@@ -383,19 +330,19 @@ class Yolov7Loss:
         else:
             raise ValueError(f"Only 3 or 5 anchor boxes per target are supported: {n_anchors_per_target}")
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
-        num_anchor_boxes, num_targets = self.na, targets.shape[0]
+        num_targets = targets.shape[0]
         targets_per_layer = []
         anchor_boxes_per_layer = []
 
         # One row per anchor, one column per target each, 0, 1, 2 in each row
         anchor_box_idxs = (
-            torch.arange(num_anchor_boxes, device=targets.device).float()
+            torch.arange(self.num_anchor_sizes, device=targets.device).float()
             .repeat_interleave(num_targets)
-            .view(num_anchor_boxes, num_targets, 1)
+            .view(self.num_anchor_sizes, num_targets, 1)
         )
         # Duplicate targets for all anchor boxes and add anchor_box_idx as last target component
         target_anchor_box_pairs = torch.cat(
-            [targets.repeat(num_anchor_boxes, 1, 1), anchor_box_idxs],
+            [targets.repeat(self.num_anchor_sizes, 1, 1), anchor_box_idxs],
             dim=2
         )
 
@@ -410,8 +357,8 @@ class Yolov7Loss:
                 device=targets.device,
             ).float()
 
-        for layer_idx in range(self.nl):
-            layer_anchor_box_sizes = self.anchors[layer_idx]
+        for layer_idx in range(self.num_layers):
+            layer_anchor_box_sizes = self.anchor_sizes_per_layer[layer_idx]
             # Note on matrix, rows are y, cols are x (hence 3,2 are inverted)
             grid_size = torch.tensor(fpn_heads_outputs[layer_idx].shape)[[3, 2]]
 
@@ -423,7 +370,7 @@ class Yolov7Loss:
             if num_targets > 0:
                 size_ratio = ta_grid[:, :, [TargetIdx.W, TargetIdx.H]] / layer_anchor_box_sizes[:, None, :]
                 symmetric_size_ratio = torch.max(size_ratio, 1.0 / size_ratio)
-                in_desired_ratio = symmetric_size_ratio.max(dim=2)[0] < self.hyp["anchor_t"]
+                in_desired_ratio = symmetric_size_ratio.max(dim=2)[0] < self.max_anchor_box_target_size_ratio
                 # Drop anchor_box-target pairs where ratio in either h or w is above the hyperparam
                 ta_grid = ta_grid[in_desired_ratio]
 
@@ -564,7 +511,7 @@ class Yolov7Loss:
             image_preds[..., PredIdx.CY] += image_anchor_boxes[..., AnchorIdx.COL]
             image_preds[..., [PredIdx.W, PredIdx.H]] *= image_anchor_boxes[..., [AnchorIdx.W, AnchorIdx.H]]
             image_preds_xywh = image_preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
-            image_preds_xywh_img_coords = image_preds_xywh * self.stride[layer_idxs][:, None]
+            image_preds_xywh_img_coords = image_preds_xywh * self.stride_per_layer[layer_idxs][:, None]
             image_preds_xyxy = xywh2xyxy(image_preds_xywh_img_coords)
 
             pair_wise_iou = box_iou(image_targets_xyxy, image_preds_xyxy)
@@ -576,7 +523,7 @@ class Yolov7Loss:
             dynamic_ks = torch.clamp(top_k_ious.sum(dim=1).int(), min=1)
 
             target_class_probs = (
-                F.one_hot(image_targets[:, TargetIdx.CLS_ID].long(), self.nc).float()
+                F.one_hot(image_targets[:, TargetIdx.CLS_ID].long(), self.num_classes).float()
                 .unsqueeze(dim=1).repeat(1, num_image_preds, 1)
             )
             # TODO: Find why they do geometric mean (and test if inplace is needed)
@@ -666,22 +613,22 @@ class Yolov7Loss:
             # Objectness
             # TODO: Why detach? No backprop from IoU? Consider it a constant?
             target_objectness[output_selector] = (
-                (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(target_objectness.dtype)
+                iou.detach().clamp(0).type(target_objectness.dtype)
             )
             # Classification
-            if self.nc > 1:  # cls loss (only if multiple classes)
+            if self.num_classes > 1:  # cls loss (only if multiple classes)
                 pred_class_probs = preds[..., PredIdx.OBJ+1:]
-                # TODO: SmoothBCE might not be used, drop if neccessary
-                target_class_probs = torch.full_like(pred_class_probs, self.cn, device=device)
+                # One-hot encode the target class
+                target_class_probs = torch.full_like(pred_class_probs, 0, device=device)
                 target_class_ids = attempted_targets[:, TargetIdx.CLS_ID].long()
-                target_class_probs[range(num_anchor_boxes), target_class_ids] = self.cp
-                cls_loss = self.BCEcls(pred_class_probs, target_class_probs)
+                target_class_probs[range(num_anchor_boxes), target_class_ids] = 1
+                cls_loss = self.BCEwithLogits(pred_class_probs, target_class_probs)
         else:
             box_loss = torch.tensor(0., device=device)
             cls_loss = torch.tensor(0., device=device)
 
         pred_objectness = fpn_head_outputs[..., PredIdx.OBJ]
-        obj_loss = self.BCEobj(pred_objectness, target_objectness)
+        obj_loss = self.BCEwithLogits(pred_objectness, target_objectness)
 
         return box_loss, obj_loss, cls_loss
 
@@ -700,18 +647,18 @@ class Yolov7LossWithAux(Yolov7Loss):
         obj_loss = torch.tensor([0.], device=device)
 
         anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
+            fpn_heads_outputs[:self.num_layers], targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
         )
         anchor_boxes_per_layer, targets_per_layer = self.simOTA_assignment(
-            fpn_heads_outputs[:self.nl], targets, images, anchor_boxes_per_layer
+            fpn_heads_outputs[:self.num_layers], targets, images, anchor_boxes_per_layer
         )
         aux_anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.nl], targets, n_anchors_per_target=self.AUX_ANCHORS_PER_TARGET
+            fpn_heads_outputs[:self.num_layers], targets, n_anchors_per_target=self.AUX_ANCHORS_PER_TARGET
         )
         aux_anchor_boxes_per_layer, aux_targets_per_layer = self.simOTA_assignment(
-            fpn_heads_outputs[:self.nl], targets, images, aux_anchor_boxes_per_layer
+            fpn_heads_outputs[:self.num_layers], targets, images, aux_anchor_boxes_per_layer
         )
-        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs[:self.nl]):
+        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs[:self.num_layers]):
             layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
                 fpn_head_outputs=fpn_head_outputs,
                 anchor_boxes=anchor_boxes_per_layer[layer_idx],
@@ -719,7 +666,7 @@ class Yolov7LossWithAux(Yolov7Loss):
                 device=device
             )
 
-            aux_fpn_head_outputs = fpn_heads_outputs[layer_idx + self.nl]
+            aux_fpn_head_outputs = fpn_heads_outputs[layer_idx + self.num_layers]
             aux_layer_box_loss, aux_layer_obj_loss, aux_layer_cls_loss = self._compute_fpn_head_losses(
                 fpn_head_outputs=aux_fpn_head_outputs,
                 anchor_boxes=aux_anchor_boxes_per_layer[layer_idx],
@@ -729,13 +676,7 @@ class Yolov7LossWithAux(Yolov7Loss):
 
             box_loss += layer_box_loss + self.AUX_WEIGHT * aux_layer_box_loss
             cls_loss += layer_cls_loss + self.AUX_WEIGHT * aux_layer_cls_loss
-            obj_loss += (layer_obj_loss + self.AUX_WEIGHT * aux_layer_obj_loss) * self.balance[layer_idx]
-            if self.autobalance:
-                self.balance[layer_idx] = (
-                        self.balance[layer_idx] * 0.9999 + 0.0001 / layer_obj_loss.detach().item()
-                )
+            obj_loss += (layer_obj_loss + self.AUX_WEIGHT * aux_layer_obj_loss) * self.obj_loss_layer_weights[layer_idx]
         return box_loss, obj_loss, cls_loss
 
-
-# TODO: Move hyps into the loss, remove unused.
 # TODO: To method to reproduce trainer behavior start run.

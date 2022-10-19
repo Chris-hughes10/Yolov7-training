@@ -213,6 +213,10 @@ class Yolov7Loss:
         self.training = False
         self._compute_losses = self._compute_losses_for_eval
 
+    def to(self, device):
+        self.BCEwithLogits.to(device)
+        self.anchor_sizes_per_layer.to(device)
+
     def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
         box_loss = torch.tensor([0.], device=device)

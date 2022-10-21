@@ -2,7 +2,7 @@ import math
 
 from torch import nn
 
-from yolov7.models.core.detection_heads import IDetect, Detect, IAuxDetect
+from yolov7.models.core.detection_heads import Yolov7DetectionHead, Detect, Yolov7DetectionHeadWithAux
 
 from yolov7.models.core.layers import (
     Conv,
@@ -74,8 +74,8 @@ def create_model_from_config(model_config):
             num_out_channels = ch[from_idx[0]]
         elif module_.__name__ in {
             Detect.__name__,
-            IDetect.__name__,
-            IAuxDetect.__name__,
+            Yolov7DetectionHead.__name__,
+            Yolov7DetectionHeadWithAux.__name__,
         }:
             module_args.append([ch[x] for x in from_idx])
             if isinstance(module_args[1], int):

@@ -116,9 +116,9 @@ class SPPCSPC(nn.Module):
         return self.cv7(torch.cat((y1, y2), dim=1))
 
 
-class ImplicitA(nn.Module):
+class ImplicitAdd(nn.Module):
     def __init__(self, channel, mean=0.0, std=0.02):
-        super(ImplicitA, self).__init__()
+        super().__init__()
         self.channel = channel
         self.mean = mean
         self.std = std
@@ -129,9 +129,9 @@ class ImplicitA(nn.Module):
         return self.implicit + x
 
 
-class ImplicitM(nn.Module):
+class ImplicitMultiply(nn.Module):
     def __init__(self, channel, mean=0.0, std=0.02):
-        super(ImplicitM, self).__init__()
+        super().__init__()
         self.channel = channel
         self.mean = mean
         self.std = std

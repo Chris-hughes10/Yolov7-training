@@ -1,6 +1,6 @@
 from torch import nn
 
-from yolov7.models.core.detection_heads import IDetect, Detect, IAuxDetect
+from yolov7.models.core.detection_heads import Yolov7DetectionHead, Detect, Yolov7DetectionHeadWithAux
 from yolov7.models.core.layers import (
     Conv,
     Concat,
@@ -23,7 +23,7 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=Tru
         ]
 
     if training:
-        detection_head = IDetect
+        detection_head = Yolov7DetectionHead
     else:
         detection_head = Detect
 
@@ -158,7 +158,7 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3, training=Tr
         ]
 
     if training:
-        detection_head = IDetect
+        detection_head = Yolov7DetectionHead
     else:
         detection_head = Detect
 
@@ -310,7 +310,7 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3, training=
         ]
 
     if training:
-        detection_head = IAuxDetect
+        detection_head = Yolov7DetectionHeadWithAux
     else:
         detection_head = Detect
 
@@ -468,7 +468,7 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3, training=
         ]
 
     if training:
-        detection_head = IAuxDetect
+        detection_head = Yolov7DetectionHeadWithAux
     else:
         detection_head = Detect
 
@@ -670,7 +670,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3, training=
         ]
 
     if training:
-        detection_head = IAuxDetect
+        detection_head = Yolov7DetectionHeadWithAux
     else:
         detection_head = Detect
 
@@ -850,7 +850,7 @@ def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3, training
         ]
 
     if training:
-        detection_head = IAuxDetect
+        detection_head = Yolov7DetectionHeadWithAux
     else:
         detection_head = Detect
 
@@ -1151,7 +1151,7 @@ def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3, trainin
         ]
 
     if training:
-        detection_head = IDetect
+        detection_head = Yolov7DetectionHead
     else:
         detection_head = Detect
 

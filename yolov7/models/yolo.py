@@ -9,7 +9,7 @@ from torch import nn
 
 from yolov7.anchors import check_anchor_order
 from yolov7.models.config_builder import create_model_from_config
-from yolov7.models.core.detection_heads import Detect, IDetect, IAuxDetect
+from yolov7.models.core.detection_heads import Detect, Yolov7DetectionHead, Yolov7DetectionHeadWithAux
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,14 @@ class Yolov7Model(nn.Module):
         )
         self.initialize_anchors()
 
+    @property
+    def detection_head(self):
+        return self.model[-1]
+
     def initialize_anchors(self):
         detection_head = self.model[-1]
         s = 256  # 2x min stride
-        if isinstance(detection_head, Detect) or isinstance(detection_head, IDetect):
+        if isinstance(detection_head, Detect) or isinstance(detection_head, Yolov7DetectionHead):
             detection_head.stride = torch.tensor(
                 [
                     s / x.shape[-2]
@@ -39,7 +43,7 @@ class Yolov7Model(nn.Module):
                 ]
             )
 
-        elif isinstance(detection_head, IAuxDetect):
+        elif isinstance(detection_head, Yolov7DetectionHeadWithAux):
             detection_head.stride = torch.tensor(
                 [
                     s / x.shape[-2]
@@ -65,20 +69,16 @@ class Yolov7Model(nn.Module):
                     ]
                 )
 
-            if self.traced:
-                if (
-                    isinstance(module_, Detect)
-                    or isinstance(module_, IDetect)
-                    or isinstance(module_, IAuxDetect)
-                ):
-                    break
-
             x = module_(x)  # run
 
             intermediate_outputs.append(
                 x if module_.attach_index in self.save_output_layer_idxs else None
             )  # save output
         return x
+
+    @staticmethod
+    def postprocess(fpn_heads_outputs):
+
 
 
 def process_yolov7_outputs(
@@ -182,3 +182,19 @@ def scale_bboxes_to_original_image_size(
     scaled_boxes[:, 3].clamp_(0, original_hw[0])  # y2
 
     return scaled_boxes
+
+# def prev_postprocess():
+#     if not self.training:  # inference
+#             if self.grid[i].shape[2:4] != x[i].shape[2:4]:
+#                 self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+
+#             y = x[i].sigmoid()
+#             y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
+#             y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+#             z.append(y.view(bs, -1, self.no))
+
+#     return x if self.training else (torch.cat(z, 1), x[: self.nl])
+    # @staticmethod
+    # def _make_grid(nx=20, ny=20):
+    #     yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)], indexing="ij")
+    #     return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()

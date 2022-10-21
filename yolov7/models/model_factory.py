@@ -47,7 +47,8 @@ def create_yolov7_model(
         try:
             # load state dict
             state_dict = intersect_dicts(
-                torch.hub.load_state_dict_from_url(state_dict_path, progress=False),
+                # torch.hub.load_state_dict_from_url(state_dict_path, progress=False),
+                torch.load("./trained_models/yolov7-e6e_training_state_dict.pt"),
                 model.state_dict(),
                 exclude=["anchor"],
             )

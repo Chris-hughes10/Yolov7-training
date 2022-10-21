@@ -17,7 +17,7 @@ from yolov7.migrated.utils.torch_utils import (
     fuse_conv_and_bn,
     model_info,
     scale_img,
-    initialize_weights,
+    # initialize_weights,
     select_device,
     copy_attr,
 )
@@ -401,7 +401,7 @@ class IAuxDetect(nn.Module):
     end2end = False
     include_nms = False
 
-    def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
+    def __init__(self, nc=80, anchors=(), ch=()):  # detection layer (ch is channels)
         super(IAuxDetect, self).__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -722,7 +722,7 @@ class Model(nn.Module):
             # print('Strides: %s' % m.stride.tolist())
 
         # Init weights, biases
-        initialize_weights(self)
+        # initialize_weights(self)
         self.info()
         logger.info("")
 

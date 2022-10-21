@@ -577,7 +577,6 @@ class ComputeYolov7LossOTA(ComputeYolov7Loss):
             (targets.repeat(na, 1, 1), ai[:, :, None]), 2
         )  # append anchor indices
 
-        g = 0.5  # bias
         off = (
             torch.tensor(
                 [
@@ -750,6 +749,7 @@ class ComputeYolov7LossAuxOTA(ComputeYolov7LossOTA):
                 self.balance[i] = (
                     self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
                 )
+        return tobj
 
 
 class ComputeLoss:

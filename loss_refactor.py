@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 
 from example.data import load_cars_df, DatasetAdaptor
 from yolov7 import create_yolov7_model
@@ -8,7 +9,6 @@ from torch.utils.data import DataLoader
 import torch
 
 from yolov7.loss_factory import create_yolov7_loss, create_yolov7_loss_orig
-
 # Ensures seeds are set to remove randomness
 import pytorch_accelerated
 
@@ -32,13 +32,15 @@ def main():
     dl = DataLoader(eval_yds, collate_fn=yolov7_collate_fn, batch_size=2, shuffle=False)
 
     model = create_yolov7_model(
-        architecture="yolov7", num_classes=1, pretrained=True
+        architecture="yolov7-e6e", num_classes=2, pretrained=True
     )
+    # We use trai mode for this because we need auxiliary head for aux loss
 
-    model.eval()
+    ota_loss = True
+    aux_loss = True
 
-    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=True)
-    eval_loss_func_r = create_yolov7_loss(model, ota_loss=True, aux_loss=True)
+    eval_loss_func = create_yolov7_loss_orig(model, ota_loss=ota_loss, aux_loss=aux_loss)
+    eval_loss_func_r = create_yolov7_loss(model, ota_loss=ota_loss, aux_loss=aux_loss)
     # eval_loss_func = create_yolov7_loss_orig(model, ota_loss=True, aux_loss=True)
     i = 0
 
@@ -52,22 +54,25 @@ def main():
             )
 
             model_outputs = model(images)
-
-            inference_outputs, rpn_outputs = model_outputs
-            val_loss, loss_items = eval_loss_func(p=rpn_outputs, targets=labels, imgs=images)
-            val_loss_r, loss_items_r = eval_loss_func_r(p=rpn_outputs, targets=labels, imgs=images)
-            # import pickle
-            # loss_inputs = {"rpn_outputs": rpn_outputs, "labels": labels, "images": images}
-            # with open(f"batch{i}_loss_ota_inputs.pkl", "wb") as f:
+            loss_inputs = {"model_outputs": model_outputs, "labels": labels, "images": images}
+            # Uncomment to save variables to use in testing
+            # with open(f"batch{i}_loss_inputs.pkl", "wb") as f:
             #     pickle.dump(loss_inputs, f)
+            if not aux_loss:
+                # Only need auxiliary head outputs for aux loss
+                # eval mode prunes the same way because it only uses no aux loss (nor OTA but no prob)
+                model_outputs = model_outputs[:model.model[-1].nl]
 
+            # inference_outputs, rpn_outputs = model_outputs
+            val_loss, loss_items = eval_loss_func(p=model_outputs, targets=labels, imgs=images)
+            val_loss_r, loss_items_r = eval_loss_func_r(p=model_outputs, targets=labels, imgs=images)
 
             assert val_loss_r == val_loss
             assert (loss_items_r == loss_items).all()
 
             i +=1
 
-            if i == 10:
+            if i == 3:
                 break
 
     print('Done')

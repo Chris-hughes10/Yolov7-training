@@ -169,6 +169,7 @@ class Yolov7Loss:
         max_anchor_box_target_size_ratio=4
         ):
 
+        # TODO: Copy so it is not changed or extract out
         detection_head = model.module.model[-1] if is_parallel(model) else model.model[-1]
         self.num_layers = detection_head.nl
         self.anchor_sizes_per_layer = detection_head.anchors
@@ -191,7 +192,7 @@ class Yolov7Loss:
 
         self.max_anchor_box_target_size_ratio = max_anchor_box_target_size_ratio
 
-        self.BCEwithLogits = nn.BCEWithLogitsLoss().to(model.device)
+        self.BCEwithLogits = nn.BCEWithLogitsLoss()
 
         self.training = True
         self.train()
@@ -215,7 +216,9 @@ class Yolov7Loss:
 
     def to(self, device):
         self.BCEwithLogits.to(device)
-        self.anchor_sizes_per_layer.to(device)
+        # TODO: These are responsibilitity of the model
+        self.anchor_sizes_per_layer = self.anchor_sizes_per_layer.to(device)
+        self.stride_per_layer = self.stride_per_layer.to(device)
 
     def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
@@ -414,7 +417,7 @@ class Yolov7Loss:
                 # Keep only the ones are relevant
                 offsets_per_ta_pair = offsets_per_ta_pair[extra_anchors_selector]
             else:
-                ta_grid_xtr = targets[0]
+                ta_grid_xtr = target_anchor_box_pairs[0]
                 offsets_per_ta_pair = 0
 
             # Define
@@ -598,6 +601,10 @@ class Yolov7Loss:
         return matched_anchor_boxes_per_layer, matched_targets_per_layer
 
     def _compute_fpn_head_losses(self, fpn_head_outputs, anchor_boxes, attempted_targets, device):
+        # Initialize in case the conditions for them are not hit
+        box_loss = torch.tensor(0., device=device)
+        cls_loss = torch.tensor(0., device=device)
+
         target_objectness = torch.zeros_like(fpn_head_outputs[..., 0], device=device)
 
         num_anchor_boxes = anchor_boxes.shape[0]
@@ -627,9 +634,6 @@ class Yolov7Loss:
                 target_class_ids = attempted_targets[:, TargetIdx.CLS_ID].long()
                 target_class_probs[range(num_anchor_boxes), target_class_ids] = 1
                 cls_loss = self.BCEwithLogits(pred_class_probs, target_class_probs)
-        else:
-            box_loss = torch.tensor(0., device=device)
-            cls_loss = torch.tensor(0., device=device)
 
         pred_objectness = fpn_head_outputs[..., PredIdx.OBJ]
         obj_loss = self.BCEwithLogits(pred_objectness, target_objectness)

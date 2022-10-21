@@ -50,7 +50,6 @@ class Yolov7Trainer(Trainer):
         self,
         model,
         loss_func,
-        eval_loss_func,
         optimizer,
         callbacks,
         filter_eval_predictions_fn=None,
@@ -58,34 +57,27 @@ class Yolov7Trainer(Trainer):
         super().__init__(
             model=model, loss_func=loss_func, optimizer=optimizer, callbacks=callbacks
         )
-        self.eval_loss_func = eval_loss_func
         self.filter_eval_predictions = filter_eval_predictions_fn
 
     def training_run_start(self):
-        # TODO move to loss fn
-        self.loss_func.BCEcls.to(self.device)
-        self.loss_func.BCEobj.to(self.device)
-        self.loss_func.anchors = self.loss_func.anchors.to(self.device)
-
-        self.eval_loss_func.BCEcls.to(self.device)
-        self.eval_loss_func.BCEobj.to(self.device)
-        self.eval_loss_func.anchors = self.eval_loss_func.anchors.to(self.device)
+        self.loss_func.to(self.device)
 
     def evaluation_run_start(self):
-        # TODO move to loss fn
-        self.loss_func.BCEcls.to(self.device)
-        self.loss_func.BCEobj.to(self.device)
-        self.loss_func.anchors = self.loss_func.anchors.to(self.device)
+        self.loss_func.to(self.device)
 
-        self.eval_loss_func.BCEcls.to(self.device)
-        self.eval_loss_func.BCEobj.to(self.device)
-        self.eval_loss_func.anchors = self.eval_loss_func.anchors.to(self.device)
+    def train_epoch_start(self):
+        super().train_epoch_start()
+        self.loss_func.train()
+
+    def eval_epoch_start(self):
+        super().eval_epoch_start()
+        self.loss_func.eval()
 
     def calculate_train_batch_loss(self, batch) -> dict:
         images, labels = batch[0], batch[1]
 
         model_outputs = self.model(images)
-        loss, loss_items = self.loss_func(p=model_outputs, targets=labels, imgs=images)
+        loss, _ = self.loss_func(fpn_heads_outputs=model_outputs, targets=labels, images=images)
 
         return {
             "loss": loss,
@@ -104,7 +96,7 @@ class Yolov7Trainer(Trainer):
             model_outputs = self.model(images)
             inference_outputs, rpn_outputs = model_outputs
 
-            val_loss, loss_items = self.eval_loss_func(p=rpn_outputs, targets=labels)
+            val_loss, _ = self.loss_func(fpn_heads_outputs=rpn_outputs, targets=labels)
 
             preds = process_yolov7_outputs(
                 model_outputs,

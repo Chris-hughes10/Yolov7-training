@@ -18,7 +18,7 @@ from yolov7.dataset import (
     yolov7_collate_fn,
 )
 from yolov7.evaluation import CalculateMeanAveragePrecisionCallback
-from yolov7.loss_factory import create_yolov7_loss_orig
+from yolov7.loss_factory import create_yolov7_loss
 from yolov7.mosaic import MosaicMixupDataset, create_post_mosaic_transform
 from yolov7.trainer import Yolov7Trainer, filter_eval_predictions
 from yolov7.utils import SaveFirstBatchCallback
@@ -26,7 +26,7 @@ from yolov7.utils import SaveFirstBatchCallback
 
 @script
 def main(
-    data_path: str = "/home/chris/Downloads/data",
+    data_path: str = "./cars_dataset",
     image_size: int = 640,
     pretrained: bool = True,
     num_epochs: int = 30,
@@ -92,7 +92,7 @@ def main(
     # lr = 0.001
     # optimizer = torch.optim.AdamW(other_params, lr=lr)
 
-    loss_func = create_yolov7_loss_orig(model, aux_loss=False)
+    loss_func = create_yolov7_loss(model, image_size=image_size)
 
     cooldown_epochs = 5
 
@@ -102,7 +102,6 @@ def main(
         model=model,
         optimizer=optimizer,
         loss_func=loss_func,
-        eval_loss_func=create_yolov7_loss_orig(model, ota_loss=False),
         filter_eval_predictions_fn=partial(
             filter_eval_predictions, confidence_threshold=0.01, nms_threshold=0.3
         ),
@@ -150,5 +149,5 @@ def main(
 
 if __name__ == "__main__":
     os.environ["mixed_precision"] = "fp16"
-    # main()
-    notebook_launcher(main, num_processes=2)
+    main()
+    # notebook_launcher(main, num_processes=2)

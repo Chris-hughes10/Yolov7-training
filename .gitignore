@@ -5,3 +5,5 @@
 /coco_dataset/
 */.ipynb_checkpoints/
 *.ipynb
+/cars_dataset/
+/trained_models/

@@ -515,7 +515,7 @@ class ComputeLoss:
         for k in "na", "nc", "nl", "anchors":
             setattr(self, k, getattr(det, k))
 
-    def __call__(self, p, targets):  # predictions, targets, model
+    def __call__(self, p, targets, **kwargs):  # predictions, targets, model
         device = targets.device
         lcls, lbox, lobj = (
             torch.zeros(1, device=device),

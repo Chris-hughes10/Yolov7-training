@@ -24,3 +24,4 @@ RUN pip install 'azureml-mlflow==1.39.0.post1' \
                 'psutil' \
                 'thop' \
                 'ensemble-boxes' \
+                'pytest'

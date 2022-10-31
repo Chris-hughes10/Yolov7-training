@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y gcc zip htop screen libgl1-mesa-glx lib
 # Install pip dependencies
 RUN pip install 'azureml-mlflow==1.39.0.post1' \
                 'mlflow-skinny==1.26.1' \
-                'pytorch-accelerated==0.1.37' \
+                'pytorch-accelerated==0.1.39' \
                 'func_to_script' \
                 'albumentations==1.2.0' \
                 'pandas' \

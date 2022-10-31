@@ -11,6 +11,33 @@ from yolov7.models.yolo import (
     scale_bboxes_to_original_image_size,
 )
 
+def scale_bboxes_to_original_image_size(
+    xyxy_boxes, resized_hw, original_hw, is_padded=True
+):
+    scaled_boxes = xyxy_boxes.clone()
+    scale_ratio = resized_hw[0] / original_hw[0], resized_hw[1] / original_hw[1]
+
+    if is_padded:
+        # remove padding
+        pad_scale = min(scale_ratio)
+        padding = (resized_hw[1] - original_hw[1] * pad_scale) / 2, (
+            resized_hw[0] - original_hw[0] * pad_scale
+        ) / 2
+        scaled_boxes[:, [0, 2]] -= padding[0]  # x padding
+        scaled_boxes[:, [1, 3]] -= padding[1]  # y padding
+        scale_ratio = (pad_scale, pad_scale)
+
+    scaled_boxes[:, [0, 2]] /= scale_ratio[1]
+    scaled_boxes[:, [1, 3]] /= scale_ratio[0]
+
+    # Clip bounding xyxy bounding boxes to image shape (height, width)
+    scaled_boxes[:, 0].clamp_(0, original_hw[1])  # x1
+    scaled_boxes[:, 1].clamp_(0, original_hw[0])  # y1
+    scaled_boxes[:, 2].clamp_(0, original_hw[1])  # x2
+    scaled_boxes[:, 3].clamp_(0, original_hw[0])  # y2
+
+    return scaled_boxes
+
 
 class DisableAugmentationCallback(TrainerCallback):
     def __init__(self, no_aug_epochs):

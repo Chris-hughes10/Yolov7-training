@@ -9,7 +9,8 @@ from torch import nn
 
 from yolov7.anchors import check_anchor_order
 from yolov7.models.config_builder import create_model_from_config
-from yolov7.models.core.detection_heads import Detect, Yolov7DetectionHead, Yolov7DetectionHeadWithAux
+from yolov7.models.core.detection_heads import Yolov7DetectionHead, Yolov7DetectionHeadWithAux
+from yolov7.loss import transform_model_outputs_into_predictions, PredIdx
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class Yolov7Model(nn.Module):
                 ]
             )
 
-        detection_head.anchors /= detection_head.stride.view(-1, 1, 1)
+        detection_head.anchors /= detection_head.stride.view(-1, 1, 1) # Anchors into grid coordinates
         check_anchor_order(detection_head)
         self.stride = detection_head.stride
 
@@ -76,84 +77,110 @@ class Yolov7Model(nn.Module):
             )  # save output
         return x
 
+    def postprocess(self, fpn_heads_outputs, conf_thres=0.001, max_detections=30000, multiple_labels_per_box=True):
+        """TODO: Docstring"""
+        # never ran in training
+        # list of each detection head output (which changes grid x and grid y and anchors)
+        # num_images, num_anchors, grid_x, grid_y, 4+1+num_classes
+        preds = self._derive_preds(fpn_heads_outputs)
+        formatted_preds = self._format_preds(preds, conf_thres, max_detections, multiple_labels_per_box)
+        return formatted_preds
+
+    def _derive_preds(self, fpn_heads_outputs):
+        all_preds = []
+        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
+            batch_size, num_rows, num_cols = fpn_head_outputs.shape[[0, 2, 3]]
+            grid = self._make_grid(num_rows, num_cols).to(fpn_head_outputs.device)
+            fpn_head_preds = transform_model_outputs_into_predictions(fpn_head_outputs)
+            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] += grid  # Grid corrections -> Grid coordinates
+            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.stride[layer_idx]  # -> Image coordinates
+            # TODO: Probably can do it in a more standardized way
+            fpn_head_preds[..., [PredIdx.W, PredIdx.H]] *= self.detection_head.anchor_grid[layer_idx] # Anchor box corrections -> Image coordinates
+            # TODO: Check if view is needed
+            all_preds.append(fpn_head_preds.view(batch_size, -1, self.detection_head.no))
+            # TODO: Before there was a .view(bs, -1, self.detection_head.no) in preds, check it
+        return torch.cat(all_preds, 1)
+
+
     @staticmethod
-    def postprocess(fpn_heads_outputs):
+    def _make_grid(num_rows, num_cols):
+        """Create grid with two stacked matrixes, one with col idxs and the other with row idxs
 
+        # TODO: Add example of matrixes
+        """
+        meshgrid = torch.meshgrid([torch.arange(num_rows), torch.arange(num_cols)], indexing="ij")
+        grid = torch.stack(meshgrid, 2).view((1, 1, num_rows, num_cols, 2)).float()
+        return grid
 
+    def _format_preds(self, preds, conf_thres=0.001, max_detections=30000, multiple_labels_per_box=True):
+        num_classes = preds.shape[2] - 5
 
-def process_yolov7_outputs(
-    model_outputs, conf_thres=0.001, max_detections=30000, multiple_labels_per_box=True
-):
-    # TODO move this function inside the model
-    model_outputs = model_outputs[0]
-    num_classes = model_outputs.shape[2] - 5
-
-    outputs = [torch.zeros((0, 6), device=model_outputs.device)] * model_outputs.shape[
-        0
-    ]
-
-    for image_idx, detections_for_image in enumerate(
-        model_outputs
-    ):  # image index, image inference
-
-        # filter by confidence
-        detections_for_image = detections_for_image[
-            detections_for_image[:, 4] >= conf_thres
+        formatted_preds = [torch.zeros((0, 6), device=preds.device)] * preds.shape[
+            0
         ]
 
-        # If none remain process next image
-        if not detections_for_image.shape[0]:
-            continue
+        for image_idx, detections_for_image in enumerate(
+            preds
+        ):  # image index, image inference
 
-        if num_classes == 1:
-            detections_for_image[:, 5:] = detections_for_image[
-                :, 4:5
-            ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
-            # so there is no need to multiply.
-        else:
-            detections_for_image[:, 5:] *= detections_for_image[
-                :, 4:5
-            ]  # conf = obj_conf * cls_conf
-
-        # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
-        xyxy_boxes = torchvision.ops.box_convert(
-            detections_for_image[:, :4], "cxcywh", "xyxy"
-        )
-
-        if multiple_labels_per_box:
-            # Detections matrix nx6 (xyxy, conf, cls)
-            # keep multiple labels per box
-            box_idxs, class_idxs = (
-                (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
-            )
-            class_confidences = detections_for_image[box_idxs, class_idxs + 5, None]
-            detections_for_image = torch.cat(
-                (xyxy_boxes[box_idxs], class_confidences, class_idxs[:, None].float()),
-                1,
-            )
-
-        else:
-            # best class only
-            # j, most confident class index
-            class_conf, class_idxs = detections_for_image[:, 5:].max(1, keepdim=True)
-
-            # filter by class confidence
-            detections_for_image = torch.cat((xyxy_boxes, class_conf, class_idxs), 1)[
-                class_conf.view(-1) > conf_thres
+            # filter by confidence
+            detections_for_image = detections_for_image[
+                detections_for_image[:, 4] >= conf_thres
             ]
 
-        # Check shape
-        n = detections_for_image.shape[0]  # number of boxes
-        if not n:  # no boxes
-            continue
-        elif n > max_detections:  # excess boxes
-            detections_for_image = detections_for_image[
-                detections_for_image[:, 4].argsort(descending=True)[:max_detections]
-            ]  # sort by confidence
+            # If none remain process next image
+            if not detections_for_image.shape[0]:
+                continue
 
-        outputs[image_idx] = detections_for_image
+            if num_classes == 1:
+                detections_for_image[:, 5:] = detections_for_image[
+                    :, 4:5
+                ]  # for models with one class, cls_loss is 0 and cls_conf is always 0.5,
+                # so there is no need to multiply.
+            else:
+                detections_for_image[:, 5:] *= detections_for_image[
+                    :, 4:5
+                ]  # conf = obj_conf * cls_conf
 
-    return outputs
+            # Box non-normalized (center x, center y, width, height) to (x1, y1, x2, y2)
+            xyxy_boxes = torchvision.ops.box_convert(
+                detections_for_image[:, :4], "cxcywh", "xyxy"
+            )
+
+            if multiple_labels_per_box:
+                # Detections matrix nx6 (xyxy, conf, cls)
+                # keep multiple labels per box
+                box_idxs, class_idxs = (
+                    (detections_for_image[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+                )
+                class_confidences = detections_for_image[box_idxs, class_idxs + 5, None]
+                detections_for_image = torch.cat(
+                    (xyxy_boxes[box_idxs], class_confidences, class_idxs[:, None].float()),
+                    1,
+                )
+
+            else:
+                # best class only
+                # j, most confident class index
+                class_conf, class_idxs = detections_for_image[:, 5:].max(1, keepdim=True)
+
+                # filter by class confidence
+                detections_for_image = torch.cat((xyxy_boxes, class_conf, class_idxs), 1)[
+                    class_conf.view(-1) > conf_thres
+                ]
+
+            # Check shape
+            n = detections_for_image.shape[0]  # number of boxes
+            if not n:  # no boxes
+                continue
+            elif n > max_detections:  # excess boxes
+                detections_for_image = detections_for_image[
+                    detections_for_image[:, 4].argsort(descending=True)[:max_detections]
+                ]  # sort by confidence
+
+            formatted_preds[image_idx] = detections_for_image
+
+        return formatted_preds
 
 
 def scale_bboxes_to_original_image_size(
@@ -182,19 +209,3 @@ def scale_bboxes_to_original_image_size(
     scaled_boxes[:, 3].clamp_(0, original_hw[0])  # y2
 
     return scaled_boxes
-
-# def prev_postprocess():
-#     if not self.training:  # inference
-#             if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-#                 self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
-
-#             y = x[i].sigmoid()
-#             y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
-#             y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
-#             z.append(y.view(bs, -1, self.no))
-
-#     return x if self.training else (torch.cat(z, 1), x[: self.nl])
-    # @staticmethod
-    # def _make_grid(nx=20, ny=20):
-    #     yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)], indexing="ij")
-    #     return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()

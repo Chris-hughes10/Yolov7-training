@@ -6,3 +6,4 @@
 **/.ipynb_checkpoints/
 /cars_dataset/
 /trained_models/
+/data/*

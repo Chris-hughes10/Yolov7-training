@@ -93,7 +93,7 @@ def test_loss(batch, ota_loss, aux_loss, expected_loss, expected_loss_items, bat
     prev_loss, prev_loss_items = prev_loss_func(p=prev_model_outputs, targets=labels, imgs=images)
 
     assert (loss.round(decimals=5) == expected_loss.round(decimals=5)).all().item()
-    assert (loss_items.round(decimals=5) == expected_loss_items.round(decimals=5)).all().item()
+    assert (loss_items.round(decimals=4) == expected_loss_items.round(decimals=4)).all().item()
 
     loss.backward()
     prev_loss.backward()

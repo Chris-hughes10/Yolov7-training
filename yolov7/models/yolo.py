@@ -36,7 +36,7 @@ class Yolov7Model(nn.Module):
     def initialize_anchors(self):
         detection_head = self.model[-1]
         s = 256  # 2x min stride
-        if isinstance(detection_head, Detect) or isinstance(detection_head, Yolov7DetectionHead):
+        if isinstance(detection_head, Yolov7DetectionHead):
             detection_head.stride = torch.tensor(
                 [
                     s / x.shape[-2]
@@ -89,10 +89,10 @@ class Yolov7Model(nn.Module):
     def _derive_preds(self, fpn_heads_outputs):
         all_preds = []
         for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
-            batch_size, num_rows, num_cols = fpn_head_outputs.shape[[0, 2, 3]]
+            batch_size, _, num_rows, num_cols, *_ = fpn_head_outputs.shape
             grid = self._make_grid(num_rows, num_cols).to(fpn_head_outputs.device)
             fpn_head_preds = transform_model_outputs_into_predictions(fpn_head_outputs)
-            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] += grid  # Grid corrections -> Grid coordinates
+            fpn_head_preds[..., [PredIdx.CY, PredIdx.CX]] += grid  # Grid corrections -> Grid coordinates
             fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.stride[layer_idx]  # -> Image coordinates
             # TODO: Probably can do it in a more standardized way
             fpn_head_preds[..., [PredIdx.W, PredIdx.H]] *= self.detection_head.anchor_grid[layer_idx] # Anchor box corrections -> Image coordinates

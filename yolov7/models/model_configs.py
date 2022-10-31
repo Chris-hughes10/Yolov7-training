@@ -1,6 +1,6 @@
 from torch import nn
 
-from yolov7.models.core.detection_heads import Yolov7DetectionHead, Detect, Yolov7DetectionHeadWithAux
+from yolov7.models.core.detection_heads import Yolov7DetectionHead, Yolov7DetectionHeadWithAux
 from yolov7.models.core.layers import (
     Conv,
     Concat,
@@ -22,10 +22,7 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=Tru
             [142, 110, 192, 243, 459, 401],
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHead
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHead
 
     return {
         "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7_training_state_dict.pt",
@@ -157,10 +154,7 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3, training=Tr
             [142, 110, 192, 243, 459, 401],  # P5/32
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHead
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHead
 
     return {
         "state_dict_path": "yolov7x_training_state_dict.pt",
@@ -309,10 +303,7 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3, training=
             [436, 615, 739, 380, 925, 792],  # P6/64
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHeadWithAux
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHeadWithAux
 
     return {
         "state_dict_path": "yolov7-w6_training_state_dict.pt",
@@ -669,10 +660,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3, training=
             [436, 615, 739, 380, 925, 792],  # P6/64
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHeadWithAux
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHeadWithAux
 
     return {
         "state_dict_path": "yolov7-e6_training_state_dict.pt",
@@ -849,10 +837,7 @@ def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3, training
             [436, 615, 739, 380, 925, 792],  # P6/64
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHeadWithAux
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHeadWithAux
 
     return {
         "state_dict_path": "yolov7-e6e_training_state_dict.pt",
@@ -1150,10 +1135,7 @@ def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3, trainin
             [116, 90, 156, 198, 373, 326],  # P5/32,
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHead
-    else:
-        detection_head = Detect
+    detection_head = Yolov7DetectionHead
 
     return {
         "state_dict_path": "yolov7-tiny_training_state_dict.pt",

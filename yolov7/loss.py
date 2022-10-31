@@ -151,7 +151,7 @@ def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.ten
     preds_xy = outputs[..., [PredIdx.CX, PredIdx.CY]].sigmoid() * 2.0 - 0.5
     preds_wh = (outputs[..., [PredIdx.W, PredIdx.H]].sigmoid() * 2) ** 2
     preds_rest = outputs[..., PredIdx.OBJ:]
-    preds = torch.cat([preds_xy, preds_wh, preds_rest], dim=1)
+    preds = torch.cat([preds_xy, preds_wh, preds_rest], dim=-1)
     return preds
 
 

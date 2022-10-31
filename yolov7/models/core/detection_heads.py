@@ -19,7 +19,7 @@ class Yolov7DetectionHead(nn.Module):
             "anchor_grid", a.clone().view(self.nl, 1, -1, 1, 1, 2)
         )  # shape(nl,1,na,1,1,2)
         # TODO: Nasty that not everything is defined here
-        self.initialize_module_parameters(self, ch)
+        self.initialize_module_parameters(ch)
 
     def initialize_module_parameters(self, ch):
         self.m = nn.ModuleList(

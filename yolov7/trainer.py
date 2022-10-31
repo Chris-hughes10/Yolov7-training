@@ -7,7 +7,6 @@ from pytorch_accelerated.callbacks import TrainerCallback
 from torch import Tensor
 
 from yolov7.models.yolo import (
-    process_yolov7_outputs,
     scale_bboxes_to_original_image_size,
 )
 
@@ -103,12 +102,12 @@ class Yolov7Trainer(Trainer):
     def calculate_train_batch_loss(self, batch) -> dict:
         images, labels = batch[0], batch[1]
 
-        model_outputs = self.model(images)
-        loss, _ = self.loss_func(fpn_heads_outputs=model_outputs, targets=labels, images=images)
+        fpn_heads_outputs = self.model(images)
+        loss, _ = self.loss_func(fpn_heads_outputs=fpn_heads_outputs, targets=labels, images=images)
 
         return {
             "loss": loss,
-            "model_outputs": model_outputs,
+            "model_outputs": fpn_heads_outputs,
             "batch_size": images.size(0),
         }
 
@@ -120,21 +119,17 @@ class Yolov7Trainer(Trainer):
                 batch[2],
                 batch[3].cpu(),
             )
-            model_outputs = self.model(images)
-            inference_outputs, rpn_outputs = model_outputs
+            fpn_heads_outputs = self.model(images)
+            val_loss, _ = self.loss_func(fpn_heads_outputs=fpn_heads_outputs, targets=labels)
 
-            val_loss, _ = self.loss_func(fpn_heads_outputs=rpn_outputs, targets=labels)
-
-            preds = process_yolov7_outputs(
-                model_outputs,
-            )
+            preds = self.model.postprocess(fpn_heads_outputs, conf_thres=0.001)
 
             if self.filter_eval_predictions is not None:
                 preds = self.filter_eval_predictions(preds)
 
             resized_image_sizes = torch.as_tensor(
                 images.shape[2:], device=original_image_sizes.device
-            )[None].repeat(len(inference_outputs), 1)
+            )[None].repeat(len(preds), 1)
 
         formatted_predictions = self.get_formatted_preds(
             image_idxs, preds, original_image_sizes, resized_image_sizes
@@ -148,7 +143,7 @@ class Yolov7Trainer(Trainer):
 
         return {
             "loss": val_loss,
-            "model_outputs": model_outputs,
+            "model_outputs": fpn_heads_outputs,
             "predictions": gathered_predictions,
             "batch_size": images.size(0),
         }

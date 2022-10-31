@@ -26,14 +26,14 @@ from yolov7.utils import SaveFirstBatchCallback
 
 @script
 def main(
-    data_path: str = "./cars_dataset",
+    data_path: str = "../data/cars",
     image_size: int = 640,
     pretrained: bool = True,
     num_epochs: int = 30,
 ):
 
     # pretrained = False
-    num_epochs = 100
+    # num_epochs = 100
 
     data_path = Path(data_path)
     images_path = data_path / "training_images"
@@ -136,7 +136,7 @@ def main(
     trainer.train(
         num_epochs=num_epochs,
         train_dataset=train_yds,
-        train_dataloader_kwargs={"num_workers": 0},
+        # train_dataloader_kwargs={"num_workers": 0},
         eval_dataset=eval_yds,
         per_device_batch_size=batch_size,
         create_scheduler_fn=CosineLrScheduler.create_scheduler_fn(

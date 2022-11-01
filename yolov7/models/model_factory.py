@@ -10,7 +10,7 @@ from yolov7.models.model_configs import (
     get_yolov7_e6_config,
     get_yolov7_tiny_config,
 )
-from yolov7.models.yolo import Yolov7Model
+from yolov7.models.yolo import LegacyYolov7Model, Yolov7Model
 from yolov7.utils import intersect_dicts
 
 MODEL_CONFIGS = {
@@ -32,15 +32,19 @@ def create_yolov7_model(
     num_channels=3,
     pretrained=True,
     training=True,
+    legacy=False
 ):
     config = MODEL_CONFIGS[architecture](
         num_classes=num_classes,
         anchors=anchors,
         num_channels=num_channels,
-        training=training,
+        legacy=legacy
     )
 
-    model = Yolov7Model(model_config=config)
+    if not legacy:
+        model = Yolov7Model(model_config=config)
+    else:
+        model = LegacyYolov7Model(model_config=config)
 
     if pretrained:
         state_dict_path = config["state_dict_path"]

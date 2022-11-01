@@ -1,6 +1,6 @@
 from torch import nn
 
-from yolov7.models.core.detection_heads import Yolov7DetectionHead, Yolov7DetectionHeadWithAux
+from yolov7.models.core.detection_heads import IDetect, Yolov7DetectionHead, Yolov7DetectionHeadWithAux
 from yolov7.models.core.layers import (
     Conv,
     Concat,
@@ -14,7 +14,7 @@ from yolov7.models.core.layers import (
 )
 
 
-def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, legacy=False):
     if anchors is None:
         anchors = [
             [12, 16, 19, 36, 40, 28],
@@ -22,7 +22,10 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=Tru
             [142, 110, 192, 243, 459, 401],
         ]
 
-    detection_head = Yolov7DetectionHead
+    if not legacy:
+        detection_head = Yolov7DetectionHead
+    else:
+        detection_head = IDetect
 
     return {
         "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7_training_state_dict.pt",
@@ -146,7 +149,7 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=Tru
     }
 
 
-def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [12, 16, 19, 36, 40, 28],  # P3/8

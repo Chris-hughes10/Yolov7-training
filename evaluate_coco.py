@@ -1,3 +1,4 @@
+from functools import partial
 import albumentations as A
 import numpy as np
 import torch
@@ -10,7 +11,7 @@ from yolov7 import create_yolov7_model
 from yolov7.dataset import Yolov7Dataset, create_yolov7_transforms, yolov7_collate_fn
 from yolov7.evaluation import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss
-from yolov7.trainer import Yolov7Trainer
+from yolov7.trainer import Yolov7Trainer, filter_eval_predictions
 
 # fmt: off
 COCO80_TO_COCO91_MAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28,
@@ -87,8 +88,8 @@ class ConvertPredictionClassesCallback(TrainerCallback):
 
 @script
 def run_evaluation(
-    coco_valid_images_path: str = "../coco_dataset/coco/images/val2017",
-    coco_valid_annotations_file_path: str = "../coco_dataset/coco/annotations/instances_val2017.json",
+    coco_valid_images_path: str = "./data/coco/images/val2017",
+    coco_valid_annotations_file_path: str = "./data/coco/annotations/instances_val2017.json",
     image_size: int = 640,
 ):
     ds = COCOBaseDataset(
@@ -112,8 +113,8 @@ def run_evaluation(
     trainer = Yolov7Trainer(
         model=model,
         optimizer=None,
-        loss_func=create_yolov7_loss(model, ota_loss=False),
-        eval_loss_func=create_yolov7_loss(model, ota_loss=False),
+        loss_func=create_yolov7_loss(model, image_size=image_size),
+        filter_eval_predictions_fn=partial(filter_eval_predictions, confidence_threshold=0.001),
         callbacks=[
             ConvertPredictionClassesCallback,
             CalculateMeanAveragePrecisionCallback(targets_json=ds.targets_json, verbose=True),

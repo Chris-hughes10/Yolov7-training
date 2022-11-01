@@ -32,8 +32,8 @@ def main(
     num_epochs: int = 30,
 ):
 
-    # pretrained = False
-    # num_epochs = 100
+    pretrained = False
+    num_epochs = 300
 
     data_path = Path(data_path)
     images_path = data_path / "training_images"

@@ -172,11 +172,11 @@ class Yolov7Loss:
         max_anchor_box_target_size_ratio=4,
     ):
         detection_head = model.detection_head
-        self.num_layers = detection_head.nl
+        self.num_layers = detection_head.num_detection_layers
         self.anchor_sizes_per_layer = detection_head.anchors
         self.stride_per_layer = detection_head.stride
-        self.num_anchor_sizes = detection_head.na
-        self.num_classes = detection_head.nc
+        self.num_anchor_sizes = detection_head.num_anchor_templates
+        self.num_classes = detection_head.num_classes
 
         # Hardcoded in the original Yolov7 code released with the paper
         if self.num_layers == 3:

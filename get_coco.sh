@@ -1,6 +1,6 @@
 #!/bin/bash
 # COCO 2017 dataset http://cocodataset.org
-# Download command: bash ./scripts/get_coco.sh
+# Download command: bash get_coco.sh
 
 # Download/unzip labels
 d='./data' # unzip directory

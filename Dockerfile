@@ -12,16 +12,7 @@ RUN pip install 'azureml-mlflow==1.39.0.post1' \
                 'pandas' \
                 'matplotlib>=3.2.2' \
                 'pycocotools' \
-                'timm' \
-                'opencv-python>=4.1.1' \
-                'Pillow>=7.1.2' \
                 'PyYAML>=5.3.1' \
-                'requests>=2.23.0' \
                 'scipy>=1.4.1' \
-                'protobuf<4.21.3' \
-                'tensorboard>=2.4.1' \
-                'seaborn>=0.11.0' \
-                'psutil' \
-                'thop' \
                 'ensemble-boxes' \
                 'pytest'

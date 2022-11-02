@@ -73,8 +73,7 @@ class Yolov7Model(nn.Module):
 
         other_params = [p for p in self.model.parameters() if p not in conv_weights]
 
-        return {'conv_weights': list(conv_weights),
-                'other_params': other_params}
+        return {"conv_weights": list(conv_weights), "other_params": other_params}
 
     def forward(self, x):
         intermediate_outputs = []
@@ -133,11 +132,9 @@ class Yolov7Model(nn.Module):
                 layer_idx
             ]  # Anchor box corrections -> Image coordinates
             fpn_head_preds[..., PredIdx.OBJ :].sigmoid_()
-            # TODO: Check if view is needed
             all_preds.append(
                 fpn_head_preds.view(batch_size, -1, self.detection_head.no)
             )
-            # TODO: Before there was a .view(bs, -1, self.detection_head.no) in preds, check it
         return torch.cat(all_preds, 1)
 
     @staticmethod

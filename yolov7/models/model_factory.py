@@ -1,14 +1,13 @@
 import torch
 from pytorch_accelerated.utils import local_process_zero_first
-
 from yolov7.models.model_configs import (
     get_yolov7_config,
-    get_yolov7_e6e_config,
-    get_yolov7x_config,
-    get_yolov7_w6_config,
     get_yolov7_d6_config,
     get_yolov7_e6_config,
+    get_yolov7_e6e_config,
     get_yolov7_tiny_config,
+    get_yolov7_w6_config,
+    get_yolov7x_config,
 )
 from yolov7.models.yolo import Yolov7Model
 from yolov7.utils import intersect_dicts

@@ -245,7 +245,7 @@ def mixup(image, boxes, classes, mixup_image, mixup_boxes, mixup_classes):
 
 class MosaicMixupDataset:
     """
-    A dataset which takes an object detection dataset returning (image, boxes, classes)
+    A dataset which takes an object detection dataset returning (image, boxes, classes, image_id, image_hw)
     and applies Mosaic and Mixup transforms. If both augmentations are enabled, mosaic
     is applied first, then Mixup.
 

@@ -14,7 +14,7 @@ from yolov7.models.core.layers import (
 )
 
 
-def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [12, 16, 19, 36, 40, 28],
@@ -146,7 +146,7 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3, training=Tru
     }
 
 
-def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [12, 16, 19, 36, 40, 28],  # P3/8
@@ -294,7 +294,7 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3, training=Tr
     }
 
 
-def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [19, 27, 44, 40, 38, 94],  # P3/8
@@ -449,7 +449,7 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3, training=
     }
 
 
-def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [19, 27, 44, 40, 38, 94],  # P3/8
@@ -458,10 +458,8 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3, training=
             [436, 615, 739, 380, 925, 792],  # P6/64
         ]
 
-    if training:
-        detection_head = Yolov7DetectionHeadWithAux
-    else:
-        detection_head = Detect
+    
+    detection_head = Yolov7DetectionHeadWithAux
 
     return {
         "state_dict_path": "yolov7-d6_training_state_dict.pt",
@@ -651,7 +649,7 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3, training=
     }
 
 
-def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [19, 27, 44, 40, 38, 94],  # P3/8
@@ -828,7 +826,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3, training=
     }
 
 
-def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [19, 27, 44, 40, 38, 94],  # P3/8
@@ -1127,7 +1125,7 @@ def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3, training
     }
 
 
-def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3, training=True):
+def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3):
     if anchors is None:
         anchors = [
             [10, 13, 16, 30, 33, 23],  # P3/8

@@ -31,13 +31,11 @@ def create_yolov7_model(
     anchors=None,
     num_channels=3,
     pretrained=True,
-    training=True,
 ):
     config = MODEL_CONFIGS[architecture](
         num_classes=num_classes,
         anchors=anchors,
         num_channels=num_channels,
-        training=training,
     )
 
     model = Yolov7Model(model_config=config)

@@ -5,7 +5,6 @@ from yolov7.models.core.layers import ImplicitAdd, ImplicitMultiply
 
 
 class Yolov7DetectionHead(nn.Module):
-
     def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
@@ -39,16 +38,13 @@ class Yolov7DetectionHead(nn.Module):
         x[i] = self.im[i](x[i])
         bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
         x[i] = (
-            x[i]
-            .view(bs, self.na, self.no, ny, nx)
-            .permute(0, 1, 3, 4, 2)
-            .contiguous()
+            x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
         )
 
 
 class Yolov7DetectionHeadWithAux(Yolov7DetectionHead):
     def initialize_module_parameters(self, ch):
-        super().initialize_module_parameters(ch[:self.nl])
+        super().initialize_module_parameters(ch[: self.nl])
         self.m2 = nn.ModuleList(
             nn.Conv2d(x, self.no * self.na, 1) for x in ch[self.nl :]
         )  # output conv
@@ -73,6 +69,7 @@ class Yolov7DetectionHeadWithAux(Yolov7DetectionHead):
 #################
 # LEGACY ########
 #################
+
 
 class Detect(nn.Module):
     stride = None  # strides computed during build
@@ -243,7 +240,9 @@ class IAuxDetect(nn.Module):
         )  # output conv
 
         self.ia = nn.ModuleList(ImplicitAdd(x) for x in ch[: self.nl])
-        self.im = nn.ModuleList(ImplicitMultiply(self.no * self.na) for _ in ch[: self.nl])
+        self.im = nn.ModuleList(
+            ImplicitMultiply(self.no * self.na) for _ in ch[: self.nl]
+        )
 
     def forward(self, x):
         # x = x.copy()  # for profiling
@@ -292,5 +291,3 @@ class IAuxDetect(nn.Module):
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
         return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
-
-

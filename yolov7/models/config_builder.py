@@ -3,7 +3,11 @@ import math
 from torch import nn
 from yolov7.migrated.models.yolo import IAuxDetect
 
-from yolov7.models.core.detection_heads import IDetect, Yolov7DetectionHead, Yolov7DetectionHeadWithAux
+from yolov7.models.core.detection_heads import (
+    IDetect,
+    Yolov7DetectionHead,
+    Yolov7DetectionHeadWithAux,
+)
 
 from yolov7.models.core.layers import (
     Conv,

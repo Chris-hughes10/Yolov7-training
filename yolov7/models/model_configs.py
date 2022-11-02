@@ -1,8 +1,19 @@
 from torch import nn
-from yolov7.models.core.detection_heads import (Yolov7DetectionHead,
-                                                Yolov7DetectionHeadWithAux)
-from yolov7.models.core.layers import (MP, SP, SPPCSPC, Concat, Conv, DownC,
-                                       ReOrg, RepConv, Shortcut)
+from yolov7.models.core.detection_heads import (
+    Yolov7DetectionHead,
+    Yolov7DetectionHeadWithAux,
+)
+from yolov7.models.core.layers import (
+    MP,
+    SP,
+    SPPCSPC,
+    Concat,
+    Conv,
+    DownC,
+    ReOrg,
+    RepConv,
+    Shortcut,
+)
 
 
 def get_yolov7_config(num_classes=80, anchors=None, num_channels=3):
@@ -12,7 +23,6 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3):
             [36, 75, 76, 55, 72, 146],
             [142, 110, 192, 243, 459, 401],
         ]
-
 
     detection_head = Yolov7DetectionHead
 
@@ -450,7 +460,6 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
             [436, 615, 739, 380, 925, 792],  # P6/64
         ]
 
-    
     detection_head = Yolov7DetectionHeadWithAux
 
     return {

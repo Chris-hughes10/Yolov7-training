@@ -1,4 +1,0 @@
-These modules are migrated from https://github.com/WongKinYiu/yolov7, which has a GPL3 License.
-
-Much of this code is largely redundant, but the choice was made to modify as little as possible,
-so if the repo is converted into a package, all of this can be removed in favour of using that.

@@ -10,6 +10,7 @@ from yolov7.models.yolo import (
     scale_bboxes_to_original_image_size,
 )
 
+
 def scale_bboxes_to_original_image_size(
     xyxy_boxes, resized_hw, original_hw, is_padded=True
 ):
@@ -103,7 +104,9 @@ class Yolov7Trainer(Trainer):
         images, labels = batch[0], batch[1]
 
         fpn_heads_outputs = self.model(images)
-        loss, _ = self.loss_func(fpn_heads_outputs=fpn_heads_outputs, targets=labels, images=images)
+        loss, _ = self.loss_func(
+            fpn_heads_outputs=fpn_heads_outputs, targets=labels, images=images
+        )
 
         return {
             "loss": loss,
@@ -120,7 +123,9 @@ class Yolov7Trainer(Trainer):
                 batch[3].cpu(),
             )
             fpn_heads_outputs = self.model(images)
-            val_loss, _ = self.loss_func(fpn_heads_outputs=fpn_heads_outputs, targets=labels)
+            val_loss, _ = self.loss_func(
+                fpn_heads_outputs=fpn_heads_outputs, targets=labels
+            )
 
             preds = self.model.postprocess(fpn_heads_outputs, conf_thres=0.001)
 

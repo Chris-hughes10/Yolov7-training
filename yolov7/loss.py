@@ -1,4 +1,4 @@
-# copied from https://github.com/WongKinYiu/yolov7/blob/main/utils/loss.py
+# adapted from https://github.com/WongKinYiu/yolov7/blob/main/utils/loss.py
 # Loss functions
 import math
 from typing import List, Tuple
@@ -15,8 +15,10 @@ from yolov7.migrated.utils.torch_utils import is_parallel
 ORIG_IMAGE_SIZE = 640  # Image size used for original training of Yolov7
 COCO_NUM_CLASSES = 80  # Original model was trained on COCO MS dataset
 
+
 class TargetIdx:
     """Provide names for the each tensor idx for what constitutes a target"""
+
     IMG_IDX = 0  # Image index in batch
     CLS_ID = 1
     CX = 2
@@ -24,8 +26,10 @@ class TargetIdx:
     W = 4
     H = 5
 
+
 class PredIdx:
     """Provide names for each tensor idx for what constitutes a prediction"""
+
     CX = 0
     CY = 1
     W = 2
@@ -33,14 +37,17 @@ class PredIdx:
     OBJ = 4
     # 5 to end correspond to class preds
 
+
 class AnchorIdx:
     """Provide names for each tensor idx for what constitutes and anchor box"""
+
     IMG_IDX = 0  # Image index in batch
     ANCHOR_IDX = 1  # Anchor index (defined by order in model attribute)
     ROW = 2  # Row index in grid
     COL = 3  # Column index in grid
     W = 4
     H = 5
+
 
 def box_iou(box1, box2):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
@@ -150,7 +157,7 @@ def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.ten
     """
     preds_xy = outputs[..., [PredIdx.CX, PredIdx.CY]].sigmoid() * 2.0 - 0.5
     preds_wh = (outputs[..., [PredIdx.W, PredIdx.H]].sigmoid() * 2) ** 2
-    preds_rest = outputs[..., PredIdx.OBJ:]
+    preds_rest = outputs[..., PredIdx.OBJ :]
     preds = torch.cat([preds_xy, preds_wh, preds_rest], dim=-1)
     return preds
 
@@ -166,11 +173,13 @@ class Yolov7Loss:
         box_loss_weight=0.05,
         cls_loss_weight=0.3,
         obj_loss_weight=0.7,
-        max_anchor_box_target_size_ratio=4
-        ):
+        max_anchor_box_target_size_ratio=4,
+    ):
 
         # TODO: Copy so it is not changed or extract out
-        detection_head = model.module.model[-1] if is_parallel(model) else model.model[-1]
+        detection_head = (
+            model.module.model[-1] if is_parallel(model) else model.model[-1]
+        )
         self.num_layers = detection_head.nl
         self.anchor_sizes_per_layer = detection_head.anchors
         self.stride_per_layer = detection_head.stride
@@ -197,13 +206,17 @@ class Yolov7Loss:
         self.training = True
         self.train()
 
-    def __call__(self, fpn_heads_outputs, targets, images=None):  # predictions, targets, model
+    def __call__(
+        self, fpn_heads_outputs, targets, images=None
+    ):  # predictions, targets, model
         box_loss, obj_loss, cls_loss = self._compute_losses(
             fpn_heads_outputs, targets, images=images
         )
 
         batch_size = fpn_heads_outputs[0].shape[0]
-        final_loss, loss_items = self._aggregate_losses(box_loss, obj_loss, cls_loss, batch_size)
+        final_loss, loss_items = self._aggregate_losses(
+            box_loss, obj_loss, cls_loss, batch_size
+        )
         return final_loss, loss_items
 
     def train(self):
@@ -222,9 +235,9 @@ class Yolov7Loss:
 
     def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
-        box_loss = torch.tensor([0.], device=device)
-        cls_loss = torch.tensor([0.], device=device)
-        obj_loss = torch.tensor([0.], device=device)
+        box_loss = torch.tensor([0.0], device=device)
+        cls_loss = torch.tensor([0.0], device=device)
+        obj_loss = torch.tensor([0.0], device=device)
 
         anchor_boxes_per_layer, _ = self.find_center_prior(
             fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
@@ -233,11 +246,15 @@ class Yolov7Loss:
             fpn_heads_outputs, targets, images, anchor_boxes_per_layer
         )
         for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
-            layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
+            (
+                layer_box_loss,
+                layer_obj_loss,
+                layer_cls_loss,
+            ) = self._compute_fpn_head_losses(
                 fpn_head_outputs=fpn_head_outputs,
                 anchor_boxes=anchor_boxes_per_layer[layer_idx],
                 attempted_targets=targets_per_layer[layer_idx],
-                device=device
+                device=device,
             )
             box_loss += layer_box_loss
             cls_loss += layer_cls_loss
@@ -246,19 +263,23 @@ class Yolov7Loss:
 
     def _compute_losses_for_eval(self, fpn_heads_outputs, targets, **_):
         device = targets.device
-        box_loss = torch.tensor([0.], device=device)
-        cls_loss = torch.tensor([0.], device=device)
-        obj_loss = torch.tensor([0.], device=device)
+        box_loss = torch.tensor([0.0], device=device)
+        cls_loss = torch.tensor([0.0], device=device)
+        obj_loss = torch.tensor([0.0], device=device)
 
         anchor_boxes_per_layer, targets_per_layer = self.find_center_prior(
             fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
         )
         for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
-            layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
+            (
+                layer_box_loss,
+                layer_obj_loss,
+                layer_cls_loss,
+            ) = self._compute_fpn_head_losses(
                 fpn_head_outputs=fpn_head_outputs,
                 anchor_boxes=anchor_boxes_per_layer[layer_idx],
                 attempted_targets=targets_per_layer[layer_idx],
-                device=device
+                device=device,
             )
             box_loss += layer_box_loss
             cls_loss += layer_cls_loss
@@ -281,7 +302,7 @@ class Yolov7Loss:
         self,
         fpn_heads_outputs: List[torch.tensor],
         targets: torch.tensor,
-        n_anchors_per_target: int
+        n_anchors_per_target: int,
     ) -> Tuple[List]:
         """Identify the anchor boxes for each fpn head to be considered predictions for each target
 
@@ -335,7 +356,9 @@ class Yolov7Loss:
         elif n_anchors_per_target == 5:
             anchor_offset = 1.0
         else:
-            raise ValueError(f"Only 3 or 5 anchor boxes per target are supported: {n_anchors_per_target}")
+            raise ValueError(
+                f"Only 3 or 5 anchor boxes per target are supported: {n_anchors_per_target}"
+            )
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         num_targets = targets.shape[0]
         targets_per_layer = []
@@ -343,26 +366,29 @@ class Yolov7Loss:
 
         # One row per anchor, one column per target each, 0, 1, 2 in each row
         anchor_box_idxs = (
-            torch.arange(self.num_anchor_sizes, device=targets.device).float()
+            torch.arange(self.num_anchor_sizes, device=targets.device)
+            .float()
             .repeat_interleave(num_targets)
             .view(self.num_anchor_sizes, num_targets, 1)
         )
         # Duplicate targets for all anchor boxes and add anchor_box_idx as last target component
         target_anchor_box_pairs = torch.cat(
-            [targets.repeat(self.num_anchor_sizes, 1, 1), anchor_box_idxs],
-            dim=2
+            [targets.repeat(self.num_anchor_sizes, 1, 1), anchor_box_idxs], dim=2
         )
 
-        anchor_offsets = anchor_offset * torch.tensor(
+        anchor_offsets = (
+            anchor_offset
+            * torch.tensor(
                 [
-                    [0, 0], # No offset
-                    [1, 0], # x offset for getting left anchor
-                    [0, 1], # y offset for getting top anchor
-                    [-1, 0], # x offset for getting right anchor
-                    [0, -1], # y offset for getting bottom anchor
+                    [0, 0],  # No offset
+                    [1, 0],  # x offset for getting left anchor
+                    [0, 1],  # y offset for getting top anchor
+                    [-1, 0],  # x offset for getting right anchor
+                    [0, -1],  # y offset for getting bottom anchor
                 ],
                 device=targets.device,
             ).float()
+        )
 
         for layer_idx in range(self.num_layers):
             layer_anchor_box_sizes = self.anchor_sizes_per_layer[layer_idx]
@@ -371,13 +397,19 @@ class Yolov7Loss:
 
             # target-anchor pairs on grid coordinates (instead of normalized)
             ta_grid = target_anchor_box_pairs.clone()
-            ta_grid[:, :, [TargetIdx.CX,TargetIdx.W]] *= grid_size[0]
-            ta_grid[:, :, [TargetIdx.CY,TargetIdx.H]] *= grid_size[1]
+            ta_grid[:, :, [TargetIdx.CX, TargetIdx.W]] *= grid_size[0]
+            ta_grid[:, :, [TargetIdx.CY, TargetIdx.H]] *= grid_size[1]
 
             if num_targets > 0:
-                size_ratio = ta_grid[:, :, [TargetIdx.W, TargetIdx.H]] / layer_anchor_box_sizes[:, None, :]
+                size_ratio = (
+                    ta_grid[:, :, [TargetIdx.W, TargetIdx.H]]
+                    / layer_anchor_box_sizes[:, None, :]
+                )
                 symmetric_size_ratio = torch.max(size_ratio, 1.0 / size_ratio)
-                in_desired_ratio = symmetric_size_ratio.max(dim=2)[0] < self.max_anchor_box_target_size_ratio
+                in_desired_ratio = (
+                    symmetric_size_ratio.max(dim=2)[0]
+                    < self.max_anchor_box_target_size_ratio
+                )
                 # Drop anchor_box-target pairs where ratio in either h or w is above the hyperparam
                 ta_grid = ta_grid[in_desired_ratio]
 
@@ -390,20 +422,30 @@ class Yolov7Loss:
                 #   extra anchor points we will consider for the target (on top of the grid cell).
                 #   - anchor_offset=0.5 -> Get closest grid cells (right or left, and top or down)
                 #   - anchor_offset=1.0 -> Get all surrounding grid cells (right, left, top, down)
-                get_left_anchor = (((ta_grid_cx % 1.0) < anchor_offset) & (ta_grid_cx > 1.0)).T
-                get_up_anchor = (((ta_grid_cy % 1.0) < anchor_offset) & (ta_grid_cy > 1.0)).T
-                get_right_anchor = (((ta_grid_cx_inv % 1.0) < anchor_offset) & (ta_grid_cx_inv > 1.0)).T
-                get_down_anchor = (((ta_grid_cy_inv % 1.0) < anchor_offset) & (ta_grid_cy_inv > 1.0)).T
+                get_left_anchor = (
+                    ((ta_grid_cx % 1.0) < anchor_offset) & (ta_grid_cx > 1.0)
+                ).T
+                get_up_anchor = (
+                    ((ta_grid_cy % 1.0) < anchor_offset) & (ta_grid_cy > 1.0)
+                ).T
+                get_right_anchor = (
+                    ((ta_grid_cx_inv % 1.0) < anchor_offset) & (ta_grid_cx_inv > 1.0)
+                ).T
+                get_down_anchor = (
+                    ((ta_grid_cy_inv % 1.0) < anchor_offset) & (ta_grid_cy_inv > 1.0)
+                ).T
 
                 # Center anchor is the anchor of the grid cell where the target coordinates fall in
-                get_center_anchor = torch.ones_like(get_left_anchor)  # True for all targets
+                get_center_anchor = torch.ones_like(
+                    get_left_anchor
+                )  # True for all targets
                 extra_anchors_selector = torch.stack(
                     [
                         get_center_anchor,
                         get_left_anchor,
                         get_up_anchor,
                         get_right_anchor,
-                        get_down_anchor
+                        get_down_anchor,
                     ]
                 )
 
@@ -413,7 +455,9 @@ class Yolov7Loss:
                 ta_grid_xtr = ta_grid_xtr[extra_anchors_selector]
 
                 # Duplicate the offsets for each possible target-anchor pair (center and each side)
-                offsets_per_ta_pair = anchor_offsets[:, None, :].repeat(1, ta_grid.shape[0], 1)
+                offsets_per_ta_pair = anchor_offsets[:, None, :].repeat(
+                    1, ta_grid.shape[0], 1
+                )
                 # Keep only the ones are relevant
                 offsets_per_ta_pair = offsets_per_ta_pair[extra_anchors_selector]
             else:
@@ -421,7 +465,9 @@ class Yolov7Loss:
                 offsets_per_ta_pair = 0
 
             # Define
-            image_idxs, target_class_ids = ta_grid_xtr[:, [TargetIdx.IMG_IDX, TargetIdx.CLS_ID]].long().T
+            image_idxs, target_class_ids = (
+                ta_grid_xtr[:, [TargetIdx.IMG_IDX, TargetIdx.CLS_ID]].long().T
+            )
             ta_grid_xtr_xy = ta_grid_xtr[:, [TargetIdx.CX, TargetIdx.CY]]
             ta_grid_xtr_wh = ta_grid_xtr[:, [TargetIdx.W, TargetIdx.H]]
 
@@ -434,7 +480,9 @@ class Yolov7Loss:
             ta_grid_xtr_j.clamp_(0, grid_size[1] - 1)
 
             # Extract the selected boxes, where xy are the position inside the grid cell
-            layer_target_boxes = torch.cat((ta_grid_xtr_xy - ta_grid_xtr_ij, ta_grid_xtr_wh), 1)
+            layer_target_boxes = torch.cat(
+                (ta_grid_xtr_xy - ta_grid_xtr_ij, ta_grid_xtr_wh), 1
+            )
             # What anchor box was used for each one of the predicted boxes
             used_anchor_box_idxs = ta_grid_xtr[:, -1].long()
             used_anchor_boxes = layer_anchor_box_sizes[used_anchor_box_idxs]
@@ -465,7 +513,9 @@ class Yolov7Loss:
             targets_per_layer.append(layer_targets)
         return anchor_boxes_per_layer, targets_per_layer
 
-    def simOTA_assignment(self, fpn_heads_outputs, targets, images, anchor_boxes_per_layer):
+    def simOTA_assignment(
+        self, fpn_heads_outputs, targets, images, anchor_boxes_per_layer
+    ):
         """Start with selected boxes as regular loss, but then, for each image, treat it as an OTA
         problem and select less boxes based on cost. Return those."""
         num_fpn_heads = len(fpn_heads_outputs)
@@ -490,17 +540,33 @@ class Yolov7Loss:
             # For each fpn head
             for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
 
-                is_this_image = anchor_boxes_per_layer[layer_idx][:, AnchorIdx.IMG_IDX] == image_idx
+                is_this_image = (
+                    anchor_boxes_per_layer[layer_idx][:, AnchorIdx.IMG_IDX] == image_idx
+                )
                 image_anchor_boxes = anchor_boxes_per_layer[layer_idx][is_this_image, :]
                 image_anchor_boxes_per_layer.append(image_anchor_boxes)
 
-                output_selector = image_anchor_boxes[:, [AnchorIdx.IMG_IDX, AnchorIdx.ANCHOR_IDX, AnchorIdx.COL, AnchorIdx.ROW]].long().T.tolist()
+                output_selector = (
+                    image_anchor_boxes[
+                        :,
+                        [
+                            AnchorIdx.IMG_IDX,
+                            AnchorIdx.ANCHOR_IDX,
+                            AnchorIdx.COL,
+                            AnchorIdx.ROW,
+                        ],
+                    ]
+                    .long()
+                    .T.tolist()
+                )
                 selected_outputs = fpn_head_outputs[output_selector]
 
                 image_preds = transform_model_outputs_into_predictions(selected_outputs)
                 image_preds_per_layer.append(image_preds)
 
-                layer_idxs = torch.full([image_anchor_boxes.shape[0]], fill_value=layer_idx)
+                layer_idxs = torch.full(
+                    [image_anchor_boxes.shape[0]], fill_value=layer_idx
+                )
                 layer_idxs_per_layer.append(layer_idxs)
 
             layer_idxs = torch.cat(layer_idxs_per_layer, dim=0)
@@ -510,15 +576,23 @@ class Yolov7Loss:
             if num_image_preds == 0:
                 continue
 
-            image_targets_xywh = image_targets[:, [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]]
+            image_targets_xywh = image_targets[
+                :, [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]
+            ]
             image_targets_xywh_img_coords = image_targets_xywh * image_size
             image_targets_xyxy = xywh2xyxy(image_targets_xywh_img_coords)
 
             image_preds[..., PredIdx.CX] += image_anchor_boxes[..., AnchorIdx.ROW]
             image_preds[..., PredIdx.CY] += image_anchor_boxes[..., AnchorIdx.COL]
-            image_preds[..., [PredIdx.W, PredIdx.H]] *= image_anchor_boxes[..., [AnchorIdx.W, AnchorIdx.H]]
-            image_preds_xywh = image_preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
-            image_preds_xywh_img_coords = image_preds_xywh * self.stride_per_layer[layer_idxs][:, None]
+            image_preds[..., [PredIdx.W, PredIdx.H]] *= image_anchor_boxes[
+                ..., [AnchorIdx.W, AnchorIdx.H]
+            ]
+            image_preds_xywh = image_preds[
+                ..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]
+            ]
+            image_preds_xywh_img_coords = (
+                image_preds_xywh * self.stride_per_layer[layer_idxs][:, None]
+            )
             image_preds_xyxy = xywh2xyxy(image_preds_xywh_img_coords)
 
             pair_wise_iou = box_iou(image_targets_xyxy, image_preds_xyxy)
@@ -530,21 +604,29 @@ class Yolov7Loss:
             dynamic_ks = torch.clamp(top_k_ious.sum(dim=1).int(), min=1)
 
             target_class_probs = (
-                F.one_hot(image_targets[:, TargetIdx.CLS_ID].long(), self.num_classes).float()
-                .unsqueeze(dim=1).repeat(1, num_image_preds, 1)
+                F.one_hot(image_targets[:, TargetIdx.CLS_ID].long(), self.num_classes)
+                .float()
+                .unsqueeze(dim=1)
+                .repeat(1, num_image_preds, 1)
             )
             # TODO: Find why they do geometric mean (and test if inplace is needed)
-            pred_class_scores = image_preds[:, PredIdx.OBJ+1:]
+            pred_class_scores = image_preds[:, PredIdx.OBJ + 1 :]
             pred_objectness = image_preds[:, [PredIdx.OBJ]]
             pred_class_probs = (
-                (pred_class_scores.sigmoid_() * pred_objectness.sigmoid_()).sqrt_()
-                .unsqueeze(dim=0).repeat(num_image_targets, 1, 1)
+                (pred_class_scores.sigmoid_() * pred_objectness.sigmoid_())
+                .sqrt_()
+                .unsqueeze(dim=0)
+                .repeat(num_image_targets, 1, 1)
             )
 
-            pair_wise_cls_loss = F.binary_cross_entropy(pred_class_probs, target_class_probs, reduction="none").sum(-1)
+            pair_wise_cls_loss = F.binary_cross_entropy(
+                pred_class_probs, target_class_probs, reduction="none"
+            ).sum(-1)
 
             # TODO: This 3.0 is probably a constant that should be named
-            cost = pair_wise_cls_loss + 3.0 * pair_wise_iou_loss  # num_targets x num_preds
+            cost = (
+                pair_wise_cls_loss + 3.0 * pair_wise_iou_loss
+            )  # num_targets x num_preds
 
             match_matrix = torch.zeros_like(cost).long()
 
@@ -573,8 +655,12 @@ class Yolov7Loss:
 
             for layer_idx in range(num_fpn_heads):
                 is_this_layer = layer_idxs == layer_idx
-                matched_targets_per_layer[layer_idx].append(image_matched_targets[is_this_layer])
-                matched_anchor_boxes_per_layer[layer_idx].append(image_matched_anchor_boxes[is_this_layer])
+                matched_targets_per_layer[layer_idx].append(
+                    image_matched_targets[is_this_layer]
+                )
+                matched_anchor_boxes_per_layer[layer_idx].append(
+                    image_matched_anchor_boxes[is_this_layer]
+                )
 
         # At the end, not in image by image loop
         for layer_idx in range(num_fpn_heads):
@@ -583,11 +669,15 @@ class Yolov7Loss:
                 # Note on matrix, rows are y, cols are x (hence 3,2 are inverted)
                 grid_size = torch.tensor(fpn_heads_outputs[layer_idx].shape)[[3, 2]]
                 layer_targets = torch.cat(matched_targets_per_layer[layer_idx], dim=0)
-                layer_anchor_boxes = torch.cat(matched_anchor_boxes_per_layer[layer_idx], dim=0)
+                layer_anchor_boxes = torch.cat(
+                    matched_anchor_boxes_per_layer[layer_idx], dim=0
+                )
 
-                layer_targets[:, [TargetIdx.CX,TargetIdx.W]] *= grid_size[0]
-                layer_targets[:, [TargetIdx.CY,TargetIdx.H]] *= grid_size[1]
-                layer_targets[:, [TargetIdx.CX,TargetIdx.CY]] -= layer_anchor_boxes[:, [AnchorIdx.ROW, AnchorIdx.COL]]
+                layer_targets[:, [TargetIdx.CX, TargetIdx.W]] *= grid_size[0]
+                layer_targets[:, [TargetIdx.CY, TargetIdx.H]] *= grid_size[1]
+                layer_targets[:, [TargetIdx.CX, TargetIdx.CY]] -= layer_anchor_boxes[
+                    :, [AnchorIdx.ROW, AnchorIdx.COL]
+                ]
 
                 matched_targets_per_layer[layer_idx] = layer_targets
                 matched_anchor_boxes_per_layer[layer_idx] = layer_anchor_boxes
@@ -600,22 +690,40 @@ class Yolov7Loss:
                 )
         return matched_anchor_boxes_per_layer, matched_targets_per_layer
 
-    def _compute_fpn_head_losses(self, fpn_head_outputs, anchor_boxes, attempted_targets, device):
+    def _compute_fpn_head_losses(
+        self, fpn_head_outputs, anchor_boxes, attempted_targets, device
+    ):
         # Initialize in case the conditions for them are not hit
-        box_loss = torch.tensor(0., device=device)
-        cls_loss = torch.tensor(0., device=device)
+        box_loss = torch.tensor(0.0, device=device)
+        cls_loss = torch.tensor(0.0, device=device)
 
         target_objectness = torch.zeros_like(fpn_head_outputs[..., 0], device=device)
 
         num_anchor_boxes = anchor_boxes.shape[0]
         if num_anchor_boxes > 0:
-            output_selector = anchor_boxes[:, [AnchorIdx.IMG_IDX, AnchorIdx.ANCHOR_IDX, AnchorIdx.COL, AnchorIdx.ROW]].long().T.tolist()
+            output_selector = (
+                anchor_boxes[
+                    :,
+                    [
+                        AnchorIdx.IMG_IDX,
+                        AnchorIdx.ANCHOR_IDX,
+                        AnchorIdx.COL,
+                        AnchorIdx.ROW,
+                    ],
+                ]
+                .long()
+                .T.tolist()
+            )
             selected_outputs = fpn_head_outputs[output_selector]
 
             preds = transform_model_outputs_into_predictions(selected_outputs)
-            preds[..., [PredIdx.W, PredIdx.H]] *= anchor_boxes[:, [AnchorIdx.W, AnchorIdx.H]]
+            preds[..., [PredIdx.W, PredIdx.H]] *= anchor_boxes[
+                :, [AnchorIdx.W, AnchorIdx.H]
+            ]
             pred_boxes = preds[..., [PredIdx.CX, PredIdx.CY, PredIdx.W, PredIdx.H]]
-            target_boxes = attempted_targets[..., [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]]
+            target_boxes = attempted_targets[
+                ..., [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]
+            ]
             # TODO: Transpose is because fun transposes 1 (??), fix when function cleaned
             iou = bbox_iou(pred_boxes.T, target_boxes, x1y1x2y2=False, CIoU=True)
 
@@ -628,7 +736,7 @@ class Yolov7Loss:
             )
             # Classification
             if self.num_classes > 1:  # cls loss (only if multiple classes)
-                pred_class_probs = preds[..., PredIdx.OBJ+1:]
+                pred_class_probs = preds[..., PredIdx.OBJ + 1 :]
                 # One-hot encode the target class
                 target_class_probs = torch.full_like(pred_class_probs, 0, device=device)
                 target_class_ids = attempted_targets[:, TargetIdx.CLS_ID].long()
@@ -650,41 +758,64 @@ class Yolov7LossWithAux(Yolov7Loss):
 
     def _compute_losses_for_train(self, fpn_heads_outputs, targets, images):
         device = targets.device
-        box_loss = torch.tensor([0.], device=device)
-        cls_loss = torch.tensor([0.], device=device)
-        obj_loss = torch.tensor([0.], device=device)
+        box_loss = torch.tensor([0.0], device=device)
+        cls_loss = torch.tensor([0.0], device=device)
+        obj_loss = torch.tensor([0.0], device=device)
 
         anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.num_layers], targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
+            fpn_heads_outputs[: self.num_layers],
+            targets,
+            n_anchors_per_target=self.ANCHORS_PER_TARGET,
         )
         anchor_boxes_per_layer, targets_per_layer = self.simOTA_assignment(
-            fpn_heads_outputs[:self.num_layers], targets, images, anchor_boxes_per_layer
+            fpn_heads_outputs[: self.num_layers],
+            targets,
+            images,
+            anchor_boxes_per_layer,
         )
         aux_anchor_boxes_per_layer, _ = self.find_center_prior(
-            fpn_heads_outputs[:self.num_layers], targets, n_anchors_per_target=self.AUX_ANCHORS_PER_TARGET
+            fpn_heads_outputs[: self.num_layers],
+            targets,
+            n_anchors_per_target=self.AUX_ANCHORS_PER_TARGET,
         )
         aux_anchor_boxes_per_layer, aux_targets_per_layer = self.simOTA_assignment(
-            fpn_heads_outputs[:self.num_layers], targets, images, aux_anchor_boxes_per_layer
+            fpn_heads_outputs[: self.num_layers],
+            targets,
+            images,
+            aux_anchor_boxes_per_layer,
         )
-        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs[:self.num_layers]):
-            layer_box_loss, layer_obj_loss, layer_cls_loss = self._compute_fpn_head_losses(
+        for layer_idx, fpn_head_outputs in enumerate(
+            fpn_heads_outputs[: self.num_layers]
+        ):
+            (
+                layer_box_loss,
+                layer_obj_loss,
+                layer_cls_loss,
+            ) = self._compute_fpn_head_losses(
                 fpn_head_outputs=fpn_head_outputs,
                 anchor_boxes=anchor_boxes_per_layer[layer_idx],
                 attempted_targets=targets_per_layer[layer_idx],
-                device=device
+                device=device,
             )
 
             aux_fpn_head_outputs = fpn_heads_outputs[layer_idx + self.num_layers]
-            aux_layer_box_loss, aux_layer_obj_loss, aux_layer_cls_loss = self._compute_fpn_head_losses(
+            (
+                aux_layer_box_loss,
+                aux_layer_obj_loss,
+                aux_layer_cls_loss,
+            ) = self._compute_fpn_head_losses(
                 fpn_head_outputs=aux_fpn_head_outputs,
                 anchor_boxes=aux_anchor_boxes_per_layer[layer_idx],
                 attempted_targets=aux_targets_per_layer[layer_idx],
-                device=device
+                device=device,
             )
 
             box_loss += layer_box_loss + self.AUX_WEIGHT * aux_layer_box_loss
             cls_loss += layer_cls_loss + self.AUX_WEIGHT * aux_layer_cls_loss
-            obj_loss += (layer_obj_loss + self.AUX_WEIGHT * aux_layer_obj_loss) * self.obj_loss_layer_weights[layer_idx]
+            obj_loss += (
+                layer_obj_loss + self.AUX_WEIGHT * aux_layer_obj_loss
+            ) * self.obj_loss_layer_weights[layer_idx]
         return box_loss, obj_loss, cls_loss
+
 
 # TODO: To method to reproduce trainer behavior start run.

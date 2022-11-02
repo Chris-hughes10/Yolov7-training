@@ -17,28 +17,44 @@ def intersect_dicts(da, db, exclude=()):
     }
 
 
-class SaveFirstBatchCallback(TrainerCallback):
-    def __init__(self, output_path, num_images_per_batch=1, num_epochs=1):
+class SaveBatchesCallback(TrainerCallback):
+    def __init__(
+        self, output_path, num_images_per_batch=None, num_epochs=2, num_batches=2
+    ):
         self.output_path = Path(output_path)
         self.num_images_per_batch = num_images_per_batch
+        self.num_batches = num_batches
         self.num_epochs = num_epochs
         self.batch_idx = 0
 
+    def on_train_epoch_start(self, trainer, **kwargs):
+        self.batch_idx = 0
+
+    def on_eval_epoch_start(self, trainer, **kwargs):
+        self.batch_idx = 0
+
     def save_batch(self, batch, out_path):
-        images, labels, image_idxs, original_image_sizes = (
+        images, labels, image_ids, original_image_sizes = (
             batch[0],
             batch[1],
             batch[2],
             batch[3].cpu(),
         )
 
-        for idx in range(self.num_images_per_batch):
+        num_images_per_batch = (
+            self.num_images_per_batch
+            if self.num_images_per_batch is not None
+            else images.shape[0]
+        )
+
+        for idx in range(num_images_per_batch):
             image = images[idx].permute(1, 2, 0).clone().detach().cpu()
             image_labels = labels[labels[:, 0] == idx].clone().detach().cpu()
             boxes = image_labels[:, 2:]
             boxes[:, [0, 2]] *= image.shape[0]
             boxes[:, [1, 3]] *= image.shape[1]
             class_ids = image_labels[:, 1]
+            image_id = image_ids[idx]
 
             fig = annotate_image(
                 image,
@@ -48,24 +64,28 @@ class SaveFirstBatchCallback(TrainerCallback):
             )
             out_path.mkdir(exist_ok=True, parents=True)
 
-            fig.savefig(out_path / f"image_{idx}.jpg")
+            fig.savefig(out_path / f"image_{image_id}.jpg")
 
     @local_process_zero_only
     def on_train_step_end(self, trainer, batch, batch_output, **kwargs):
-        if trainer.run_history.current_epoch == 1 and self.batch_idx == 0:
+        if (
+            trainer.run_history.current_epoch < self.num_epochs + 1
+            and self.batch_idx < self.num_batches
+        ):
             out_path = (
-                self.output_path / f"epoch_{trainer.run_history.current_epoch}/train/"
+                self.output_path
+                / f"train/epoch_{trainer.run_history.current_epoch}/{self.batch_idx+1}"
             )
             self.save_batch(batch, out_path)
             self.batch_idx += 1
 
     @local_process_zero_only
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
-        if trainer.run_history.current_epoch == 1 and self.batch_idx == 0:
-            out_path = (
-                self.output_path / f"epoch_{trainer.run_history.current_epoch}/eval/"
-            )
+        # Assume eval set is not shuffled so only save for first epoch
+        if trainer.run_history.current_epoch == 1 and self.batch_idx < self.num_batches:
+            out_path = self.output_path / f"eval/{self.batch_idx+1}"
             self.save_batch(batch, out_path)
+            self.batch_idx += 1
 
 
 class Silencer:

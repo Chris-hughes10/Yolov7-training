@@ -17,7 +17,6 @@ def create_yolov7_loss(
         "obj_loss_weight": obj_loss_weight,
         "image_size": image_size,
         "max_anchor_box_target_size_ratio": 4.0,
-
     }
 
     if aux_loss and ota_loss:

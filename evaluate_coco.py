@@ -114,10 +114,14 @@ def run_evaluation(
         model=model,
         optimizer=None,
         loss_func=create_yolov7_loss(model, image_size=image_size),
-        filter_eval_predictions_fn=partial(filter_eval_predictions, confidence_threshold=0.001),
+        filter_eval_predictions_fn=partial(
+            filter_eval_predictions, confidence_threshold=0.001
+        ),
         callbacks=[
             ConvertPredictionClassesCallback,
-            CalculateMeanAveragePrecisionCallback(targets_json=ds.targets_json, verbose=True),
+            CalculateMeanAveragePrecisionCallback(
+                targets_json=ds.targets_json, verbose=True
+            ),
             *get_default_callbacks(progress_bar=True),
         ],
     )

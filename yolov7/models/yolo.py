@@ -22,9 +22,8 @@ class Yolov7Model(nn.Module):
         super().__init__()
         self.config = model_config
         self.num_channels = self.config["num_channels"]
-        self.nc = self.config["nc"]
+        self.num_classes = self.config["num_classes"]
         self.stride = None
-        self.traced = False
 
         self.model, self.save_output_layer_idxs = create_model_from_config(
             model_config=deepcopy(self.config),

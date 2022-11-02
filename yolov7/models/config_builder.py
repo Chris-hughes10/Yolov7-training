@@ -24,7 +24,7 @@ def make_divisible(x, divisor):
 def create_model_from_config(model_config):
     ch = [model_config["num_channels"]]
     anchors = model_config["anchors"]
-    num_classes = model_config["nc"]
+    num_classes = model_config["num_classes"]
     gd = model_config["depth_multiple"]
     gw = model_config["width_multiple"]
 

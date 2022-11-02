@@ -28,7 +28,7 @@ def get_yolov7_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
         "image_size": (640, 640),
@@ -160,7 +160,7 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7x_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
         "image_size": (640, 640),
@@ -309,7 +309,7 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7-w6_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
         "image_size": (1280, 1280),
@@ -464,7 +464,7 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7-d6_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
         "image_size": (1280, 1280),
@@ -663,7 +663,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7-e6_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
         "image_size": (1280, 1280),
@@ -840,7 +840,7 @@ def get_yolov7_e6e_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7-e6e_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
         "image_size": (1280, 1280),
@@ -1138,7 +1138,7 @@ def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3):
 
     return {
         "state_dict_path": "yolov7-tiny_training_state_dict.pt",
-        "nc": num_classes,
+        "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
         "image_size": (640, 640),

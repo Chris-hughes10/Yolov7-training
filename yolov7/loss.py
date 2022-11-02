@@ -6,11 +6,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from yolov7.migrated.utils.general import (
-    xywh2xyxy,
-)
-from yolov7.migrated.utils.torch_utils import is_parallel
+import torchvision
 
 ORIG_IMAGE_SIZE = 640  # Image size used for original training of Yolov7
 COCO_NUM_CLASSES = 80  # Original model was trained on COCO MS dataset
@@ -175,11 +171,7 @@ class Yolov7Loss:
         obj_loss_weight=0.7,
         max_anchor_box_target_size_ratio=4,
     ):
-
-        # TODO: Copy so it is not changed or extract out
-        detection_head = (
-            model.module.model[-1] if is_parallel(model) else model.model[-1]
-        )
+        detection_head = model.detection_head
         self.num_layers = detection_head.nl
         self.anchor_sizes_per_layer = detection_head.anchors
         self.stride_per_layer = detection_head.stride
@@ -422,18 +414,24 @@ class Yolov7Loss:
                 #   extra anchor points we will consider for the target (on top of the grid cell).
                 #   - anchor_offset=0.5 -> Get closest grid cells (right or left, and top or down)
                 #   - anchor_offset=1.0 -> Get all surrounding grid cells (right, left, top, down)
-                get_left_anchor = (
-                    ((ta_grid_cx % 1.0) < anchor_offset) & (ta_grid_cx > 1.0)
-                ).T
-                get_up_anchor = (
-                    ((ta_grid_cy % 1.0) < anchor_offset) & (ta_grid_cy > 1.0)
-                ).T
-                get_right_anchor = (
-                    ((ta_grid_cx_inv % 1.0) < anchor_offset) & (ta_grid_cx_inv > 1.0)
-                ).T
-                get_down_anchor = (
-                    ((ta_grid_cy_inv % 1.0) < anchor_offset) & (ta_grid_cy_inv > 1.0)
-                ).T
+                get_left_anchor = ((ta_grid_cx % 1.0) < anchor_offset) & (
+                    ta_grid_cx > 1.0
+                )
+                get_left_anchor.permute(*torch.arange(get_left_anchor.ndim - 1, -1, -1))
+                get_up_anchor = ((ta_grid_cy % 1.0) < anchor_offset) & (
+                    ta_grid_cy > 1.0
+                )
+                get_up_anchor.permute(*torch.arange(get_up_anchor.ndim - 1, -1, -1))
+                get_right_anchor = ((ta_grid_cx_inv % 1.0) < anchor_offset) & (
+                    ta_grid_cx_inv > 1.0
+                )
+                get_right_anchor.permute(
+                    *torch.arange(get_right_anchor.ndim - 1, -1, -1)
+                )
+                get_down_anchor = ((ta_grid_cy_inv % 1.0) < anchor_offset) & (
+                    ta_grid_cy_inv > 1.0
+                )
+                get_down_anchor.permute(*torch.arange(get_down_anchor.ndim - 1, -1, -1))
 
                 # Center anchor is the anchor of the grid cell where the target coordinates fall in
                 get_center_anchor = torch.ones_like(
@@ -580,7 +578,9 @@ class Yolov7Loss:
                 :, [TargetIdx.CX, TargetIdx.CY, TargetIdx.W, TargetIdx.H]
             ]
             image_targets_xywh_img_coords = image_targets_xywh * image_size
-            image_targets_xyxy = xywh2xyxy(image_targets_xywh_img_coords)
+            image_targets_xyxy = torchvision.ops.box_convert(
+                image_targets_xywh_img_coords, "xywh", "xyxy"
+            )
 
             image_preds[..., PredIdx.CX] += image_anchor_boxes[..., AnchorIdx.ROW]
             image_preds[..., PredIdx.CY] += image_anchor_boxes[..., AnchorIdx.COL]
@@ -593,7 +593,9 @@ class Yolov7Loss:
             image_preds_xywh_img_coords = (
                 image_preds_xywh * self.stride_per_layer[layer_idxs][:, None]
             )
-            image_preds_xyxy = xywh2xyxy(image_preds_xywh_img_coords)
+            image_preds_xyxy = torchvision.ops.box_convert(
+                image_preds_xywh_img_coords, "xywh", "xyxy"
+            )
 
             pair_wise_iou = box_iou(image_targets_xyxy, image_preds_xyxy)
             pair_wise_iou_loss = -torch.log(pair_wise_iou + 1e-8)

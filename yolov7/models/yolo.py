@@ -37,15 +37,14 @@ class Yolov7Model(nn.Module):
     def initialize_anchors(self):
         detection_head = self.model[-1]
         s = 256  # 2x min stride
-        if isinstance(detection_head, Yolov7DetectionHead):
+        if isinstance(detection_head, (Yolov7DetectionHeadWithAux)):
             detection_head.stride = torch.tensor(
                 [
                     s / x.shape[-2]
-                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))
+                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))[:4]
                 ]
             )
-
-        elif isinstance(detection_head, Yolov7DetectionHeadWithAux):
+        elif isinstance(detection_head, (Yolov7DetectionHead)):
             detection_head.stride = torch.tensor(
                 [
                     s / x.shape[-2]

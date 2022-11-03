@@ -4,7 +4,7 @@ import pickle
 import pytest
 import torch
 
-from yolov7.loss_factory import create_yolov7_loss, create_yolov7_loss_orig
+from yolov7.loss_factory import create_yolov7_loss
 
 
 class FakeDetector:
@@ -77,9 +77,9 @@ def test_loss(
 ):
     model = FakeModel()
     loss_func = create_yolov7_loss(model, ota_loss=ota_loss, aux_loss=aux_loss)
-    prev_loss_func = create_yolov7_loss_orig(
-        model, ota_loss=ota_loss, aux_loss=aux_loss
-    )
+    # prev_loss_func = create_yolov7_loss_orig(
+    #     model, ota_loss=ota_loss, aux_loss=aux_loss
+    # )
     expected_loss = torch.tensor([expected_loss])
     expected_loss_items = torch.tensor(expected_loss_items)
 
@@ -95,9 +95,9 @@ def test_loss(
     prev_model_outputs = [o.detach().clone().requires_grad_() for o in model_outputs]
 
     loss, loss_items = loss_func(model_outputs, targets=labels, images=images)
-    prev_loss, prev_loss_items = prev_loss_func(
-        p=prev_model_outputs, targets=labels, imgs=images
-    )
+    # prev_loss, prev_loss_items = prev_loss_func(
+    #     p=prev_model_outputs, targets=labels, imgs=images
+    # )
 
     assert (loss.round(decimals=5) == expected_loss.round(decimals=5)).all().item()
     assert (
@@ -106,10 +106,10 @@ def test_loss(
         .item()
     )
 
-    loss.backward()
-    prev_loss.backward()
-    for i in range(len(model_outputs)):
-        assert (
-            model_outputs[i].grad.round(decimals=5)
-            == prev_model_outputs[i].grad.round(decimals=5)
-        ).all()
+    # loss.backward()
+    # prev_loss.backward()
+    # for i in range(len(model_outputs)):
+    #     assert (
+    #         model_outputs[i].grad.round(decimals=5)
+    #         == prev_model_outputs[i].grad.round(decimals=5)
+    #     ).all()

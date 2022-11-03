@@ -6,17 +6,16 @@ from yolov7.models.core.layers import ImplicitAdd, ImplicitMultiply
 
 class Yolov7DetectionHead(nn.Module):
 
-    def __init__(self, num_classes=80, anchor_sizes=(), in_channels_per_layer=()):  # detection layer
+    def __init__(self, num_classes=80, anchor_sizes_per_layer=(), in_channels_per_layer=()):  # detection layer
         super().__init__()
         self.num_classes = num_classes  # number of classes
         self.num_outputs = 5 + num_classes  # xywh + obj + cls1 + cls2 + ...
-        self.num_layers = len(anchor_sizes)  # number of detection layers
-        self.num_anchor_sizes = len(anchor_sizes[0]) // 2  # number of anchors
+        self.num_layers = anchor_sizes_per_layer.shape[0]
+        self.num_anchor_sizes = anchor_sizes_per_layer.shape[1]
         self.grid = [torch.zeros(1)] * self.num_layers  # init grid
-        a = torch.tensor(anchor_sizes).float().view(self.num_layers, self.num_anchor_sizes, 2)
-        self.register_buffer("anchors", a)  # shape(nl,na,2)
+        self.register_buffer("anchor_sizes_per_layer", anchor_sizes_per_layer.float())  # shape(nl,na,2)
         self.register_buffer(
-            "anchor_grid", a.clone().view(self.num_layers, 1, self.num_anchor_sizes, 1, 1, 2)
+            "anchor_grid", anchor_sizes_per_layer.float().view(self.num_layers, 1, self.num_anchor_sizes, 1, 1, 2)
         )
         self.initialize_module_parameters(in_channels_per_layer)
 

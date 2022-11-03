@@ -9,10 +9,7 @@ from torch import nn
 from yolov7.anchors import check_anchor_order
 from yolov7.loss import PredIdx, transform_model_outputs_into_predictions
 from yolov7.models.config_builder import create_model_from_config
-from yolov7.models.core.detection_heads import (
-    Yolov7DetectionHead,
-    Yolov7DetectionHeadWithAux,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,28 +32,17 @@ class Yolov7Model(nn.Module):
         return self.model[-1]
 
     def initialize_anchors(self):
-        detection_head = self.model[-1]
-        s = 256  # 2x min stride
-        if isinstance(detection_head, (Yolov7DetectionHeadWithAux)):
-            detection_head.stride = torch.tensor(
-                [
-                    s / x.shape[-2]
-                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))[:4]
-                ]
-            )
-        elif isinstance(detection_head, (Yolov7DetectionHead)):
-            detection_head.stride = torch.tensor(
-                [
-                    s / x.shape[-2]
-                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))[:4]
-                ]
-            )
-
-        detection_head.anchors /= detection_head.stride.view(
+        # detection_head = self.detection_head
+        MAX_NUM_LAYERS = 4  # Across all architectures
+        SAMPLE_IMAGE_SIZE = 256  # At least 2x max grid size, multiple of 8, value irrelevant
+        sample_input = torch.zeros(1, self.num_channels, SAMPLE_IMAGE_SIZE, SAMPLE_IMAGE_SIZE)
+        grid_sizes = [out.shape[-2] for out in self.forward(sample_input)[:MAX_NUM_LAYERS]]
+        self.detection_head.stride = SAMPLE_IMAGE_SIZE / torch.tensor(grid_sizes)
+        self.detection_head.anchor_sizes_per_layer /= self.detection_head.stride.view(
             -1, 1, 1
         )  # Anchors into grid coordinates
-        check_anchor_order(detection_head)
-        self.stride = detection_head.stride
+        check_anchor_order(self.detection_head)
+        self.stride = self.detection_head.stride
 
     def get_parameter_groups(self):
         conv_weights = {
@@ -78,20 +64,19 @@ class Yolov7Model(nn.Module):
         for module_ in self.model:
             if module_.from_index != -1:
                 # if input not from previous layer, get intermediate outputs
-                x = (
-                    intermediate_outputs[module_.from_index]
-                    if isinstance(module_.from_index, int)
-                    else [
-                        x if j == -1 else intermediate_outputs[j]
-                        for j in module_.from_index
+                if isinstance(module_.from_index, int):
+                    x = intermediate_outputs[module_.from_index]
+                else:
+                    x = [
+                        x if idx == -1 else intermediate_outputs[idx]
+                        for idx in module_.from_index
                     ]
-                )
 
-            x = module_(x)  # run
+            x = module_(x)
 
             intermediate_outputs.append(
                 x if module_.attach_index in self.save_output_layer_idxs else None
-            )  # save output
+            )
         return x
 
     def postprocess(

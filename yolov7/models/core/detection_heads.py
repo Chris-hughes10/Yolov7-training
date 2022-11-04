@@ -1,3 +1,4 @@
+from typing import List
 import torch
 from torch import nn
 
@@ -6,29 +7,37 @@ from yolov7.models.core.layers import ImplicitAdd, ImplicitMultiply
 
 class Yolov7DetectionHead(nn.Module):
 
-    def __init__(self, num_classes=80, anchor_sizes_per_layer=(), in_channels_per_layer=()):  # detection layer
+    def __init__(self, num_classes: int=80, anchor_sizes_per_layer: torch.Tensor=(), in_channels_per_layer: List[int]=()):
+        """
+        :param num_classes:
+        :param anchor_sizes_per_layer: (num_layers, num_anchor_sizes, 2)
+
+        TODO: Stride inside the config, and then resize anchors here in the constructor
+        TODO: All models to have tensor anchors
+
+        """
         super().__init__()
-        self.num_classes = num_classes  # number of classes
+        self.num_classes = num_classes
         self.num_outputs = 5 + num_classes  # xywh + obj + cls1 + cls2 + ...
         self.num_layers = anchor_sizes_per_layer.shape[0]
         self.num_anchor_sizes = anchor_sizes_per_layer.shape[1]
         self.grid = [torch.zeros(1)] * self.num_layers  # init grid
-        self.register_buffer("anchor_sizes_per_layer", anchor_sizes_per_layer.float())  # shape(nl,na,2)
+        self.register_buffer("anchor_sizes_per_layer", anchor_sizes_per_layer.float())
         self.register_buffer(
             "anchor_grid", anchor_sizes_per_layer.float().view(self.num_layers, 1, self.num_anchor_sizes, 1, 1, 2)
         )
-        self.initialize_module_parameters(in_channels_per_layer)
-
-    def initialize_module_parameters(self, in_channels_per_layer):
+        # With [:self.num_layers], ensure we only use lead heads and no aux heads.
         self._conv2d_list = nn.ModuleList(
             nn.Conv2d(in_channels, self.num_outputs * self.num_anchor_sizes, 1)
-            for in_channels in in_channels_per_layer
+            for in_channels in in_channels_per_layer[:self.num_layers]
         )
         self._impl_add_list = nn.ModuleList(
-            ImplicitAdd(in_channels) for in_channels in in_channels_per_layer
+            ImplicitAdd(in_channels)
+            for in_channels in in_channels_per_layer[:self.num_layers]
         )
         self._impl_mult_list = nn.ModuleList(
-            ImplicitMultiply(self.num_outputs * self.num_anchor_sizes) for _ in in_channels_per_layer
+            ImplicitMultiply(self.num_outputs * self.num_anchor_sizes)
+            for _ in in_channels_per_layer[:self.num_layers]
         )
 
     def forward(self, x):
@@ -52,13 +61,12 @@ class Yolov7DetectionHead(nn.Module):
 
 
 class Yolov7DetectionHeadWithAux(Yolov7DetectionHead):
-    def initialize_module_parameters(self, in_channels_per_layer):
-        super().initialize_module_parameters(in_channels_per_layer[:self.num_layers])
+    def __init__(self, num_classes=80, anchor_sizes_per_layer=(), in_channels_per_layer=()):
+        super().__init__(num_classes, anchor_sizes_per_layer, in_channels_per_layer)
         self._aux_module_list = nn.ModuleList(
             nn.Conv2d(in_channels, self.num_outputs * self.num_anchor_sizes, 1)
             for in_channels in in_channels_per_layer[self.num_layers:]
         )
-
 
     def aux_layer_forward(self, x, layer_idx):
         batch_size, _, grid_rows, grid_cols, _ = x[layer_idx].shape

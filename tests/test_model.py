@@ -12,7 +12,7 @@ from accelerate.utils import set_seed
 
 @pytest.fixture(scope="module")
 def image_tensor():
-    data_path = "./cars_dataset"
+    data_path = "./data/cars"
     data_path = Path(data_path)
     images_path = data_path / "training_images"
     annotations_file_path = data_path / "annotations.csv"
@@ -58,7 +58,7 @@ def test_outputs_are_constant(image_tensor, arch):
     outputs = model(image_tensor[None])
 
     for (o, prev_o) in zip(outputs, prev_outputs):
-        assert (o.round(decimals=15) == prev_o.round(decimals=15)).all()
+        assert (o.round(decimals=5) == prev_o.round(decimals=5)).all()
 
 
 

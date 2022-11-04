@@ -109,9 +109,9 @@ def _create_module(module_, module_args, num_repeats, attach_index, from_idx):
     module_type = str(module_)[8:-2].replace("__main__.", "")
     num_params = sum([x.numel() for x in m_.parameters()])
 
-    m_.attach_index = attach_index  # i
-    m_.from_index = from_idx  # f
-    m_.module_type = module_type  # type
-    m_.num_params = num_params  # np
+    m_.attach_index = attach_index
+    m_.from_index = from_idx
+    m_.module_type = module_type
+    m_.num_params = num_params
 
     return m_

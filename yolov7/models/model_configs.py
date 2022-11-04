@@ -840,7 +840,7 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
-        "state_dict_path": "yolov7-e6e_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7-e6e_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,

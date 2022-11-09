@@ -149,13 +149,13 @@ def get_yolov7_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=
     }
 
 
-def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
-    if anchors is None:
-        anchors = [
-            [12, 16, 19, 36, 40, 28],  # P3/8
-            [36, 75, 76, 55, 72, 146],  # P4/16
-            [142, 110, 192, 243, 459, 401],  # P5/32
-        ]
+def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=3):
+    if anchor_sizes_per_layer is None:
+        anchor_sizes_per_layer = torch.tensor([
+            [[12, 16], [19, 36], [40, 28]],  # P3/8
+            [[36, 75], [76, 55], [72, 146]],  # P4/16
+            [[142, 110], [192, 243], [459, 401]],  # P5/32
+        ])
 
     detection_head = Yolov7DetectionHead
 
@@ -167,7 +167,7 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
         "image_size": (640, 640),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchors,
+        "anchors": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, Conv, [40, 3, 1]],  # 0
             [-1, 1, Conv, [80, 3, 2]],  # 1-P1/2
@@ -292,19 +292,19 @@ def get_yolov7x_config(num_classes=80, anchors=None, num_channels=3):
             [87, 1, Conv, [320, 3, 1]],
             [102, 1, Conv, [640, 3, 1]],
             [117, 1, Conv, [1280, 3, 1]],
-            [[118, 119, 120], 1, detection_head, [num_classes, anchors]],
+            [[118, 119, 120], 1, detection_head, [num_classes, anchor_sizes_per_layer]],
         ],  # Detect(P3, P4, P5)
     }
 
 
-def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3):
-    if anchors is None:
-        anchors = [
-            [19, 27, 44, 40, 38, 94],  # P3/8
-            [96, 68, 86, 152, 180, 137],  # P4/16
-            [140, 301, 303, 264, 238, 542],  # P5/32
-            [436, 615, 739, 380, 925, 792],  # P6/64
-        ]
+def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=3):
+    if anchor_sizes_per_layer is None:
+        anchor_sizes_per_layer = torch.tensor([
+            [[19, 27], [44, 40], [38, 94]],  # P3/8
+            [[96, 68], [86, 152], [180, 137]],  # P4/16
+            [[140, 301], [303, 264], [238, 542]],  # P5/32
+            [[436, 615], [739, 380], [925, 792]],  # P6/64
+        ])
 
     detection_head = Yolov7DetectionHeadWithAux
 
@@ -316,7 +316,7 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3):
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchors,
+        "anchors": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [64, 3, 1]],  # 1-P1/2
@@ -446,20 +446,20 @@ def get_yolov7_w6_config(num_classes=80, anchors=None, num_channels=3):
                 [114, 115, 116, 117, 118, 119, 120, 121],
                 1,
                 detection_head,
-                [num_classes, anchors],
+                [num_classes, anchor_sizes_per_layer],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
 
 
-def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
-    if anchors is None:
-        anchors = [
-            [19, 27, 44, 40, 38, 94],  # P3/8
-            [96, 68, 86, 152, 180, 137],  # P4/16
-            [140, 301, 303, 264, 238, 542],  # P5/32
-            [436, 615, 739, 380, 925, 792],  # P6/64
-        ]
+def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=3):
+    if anchor_sizes_per_layer is None:
+        anchor_sizes_per_layer = torch.tensor([
+            [[19, 27], [44, 40], [38, 94]],  # P3/8
+            [[96, 68], [86, 152], [180, 137]],  # P4/16
+            [[140, 301], [303, 264], [238, 542]],  # P5/32
+            [[436, 615], [739, 380], [925, 792]],  # P6/64
+        ])
 
     detection_head = Yolov7DetectionHeadWithAux
 
@@ -471,7 +471,7 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchors,
+        "anchors": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [96, 3, 1]],  # 1-P1/2
@@ -645,20 +645,20 @@ def get_yolov7_d6_config(num_classes=80, anchors=None, num_channels=3):
                 [158, 159, 160, 161, 162, 163, 164, 165],
                 1,
                 detection_head,
-                [num_classes, anchors],
+                [num_classes, anchor_sizes_per_layer],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
 
 
-def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3):
-    if anchors is None:
-        anchors = [
-            [19, 27, 44, 40, 38, 94],  # P3/8
-            [96, 68, 86, 152, 180, 137],  # P4/16
-            [140, 301, 303, 264, 238, 542],  # P5/32
-            [436, 615, 739, 380, 925, 792],  # P6/64
-        ]
+def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=3):
+    if anchor_sizes_per_layer is None:
+        anchor_sizes_per_layer = torch.tensor([
+            [[19, 27], [44, 40], [38, 94]],  # P3/8
+            [[96, 68], [86, 152], [180, 137]],  # P4/16
+            [[140, 301], [303, 264], [238, 542]],  # P5/32
+            [[436, 615], [739, 380], [925, 792]],  # P6/64
+        ])
 
     detection_head = Yolov7DetectionHeadWithAux
 
@@ -670,7 +670,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3):
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchors,
+        "anchors": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [80, 3, 1]],  # 1-P1/2
@@ -822,7 +822,7 @@ def get_yolov7_e6_config(num_classes=80, anchors=None, num_channels=3):
                 [136, 137, 138, 139, 140, 141, 142, 143],
                 1,
                 detection_head,
-                [num_classes, anchors],
+                [num_classes, anchor_sizes_per_layer],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -1127,13 +1127,13 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
     }
 
 
-def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3):
-    if anchors is None:
-        anchors = [
-            [10, 13, 16, 30, 33, 23],  # P3/8
-            [30, 61, 62, 45, 59, 119],  # P4/16
-            [116, 90, 156, 198, 373, 326],  # P5/32,
-        ]
+def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=3):
+    if anchor_sizes_per_layer is None:
+        anchor_sizes_per_layer = torch.tensor([
+            [[10, 13], [16, 30], [33, 23]],  # P3/8
+            [[30, 61], [62, 45], [59, 119]],  # P4/16
+            [[116, 90], [156, 198], [373, 326]],  # P5/32,
+        ])
 
     detection_head = Yolov7DetectionHead
 
@@ -1145,7 +1145,7 @@ def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3):
         "image_size": (640, 640),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchors,
+        "anchors": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, Conv, [32, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 0-P1/2
             [-1, 1, Conv, [64, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 1-P2/4
@@ -1230,7 +1230,7 @@ def get_yolov7_tiny_config(num_classes=80, anchors=None, num_channels=3):
                 [74, 75, 76],
                 1,
                 detection_head,
-                [num_classes, anchors],
+                [num_classes, anchor_sizes_per_layer],
             ],  # Detect(P3, P4, P5)
         ],
     }

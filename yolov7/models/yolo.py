@@ -2,6 +2,7 @@
 
 import logging
 from copy import deepcopy
+from typing import List
 
 import torch
 import torchvision
@@ -81,12 +82,22 @@ class Yolov7Model(nn.Module):
 
     def postprocess(
         self,
-        fpn_heads_outputs,
-        conf_thres=0.001,
-        max_detections=30000,
-        multiple_labels_per_box=True,
-    ):
-        """TODO: Docstring"""
+        fpn_heads_outputs: List[torch.Tensor],
+        conf_thres: float=0.001,
+        max_detections: int=30000,
+        multiple_labels_per_box: bool=True,
+    ) -> List[torch.Tensor]:
+        """Convert FPN outputs into human-interpretable box predictions
+
+        The outputted predictions are a list and each element corresponds to one image, in the
+        same order they were passed to the model.
+
+        Each element is a tensor with all the box predictions for that image. The dimensions of
+        such tensor are Nx6 (x1 y1 x2 y2 conf class_idx), where N is the number of outputted boxes.
+
+        - If not `multiple_labels_per_box`: Only one box per output, with class with higher conf.
+        - Otherwise: Box duplicated for each class with conf above `conf_thres`.
+        """
         # never ran in training
         # list of each detection head output (which changes grid x and grid y and anchors)
         # num_images, num_anchors, grid_x, grid_y, 4+1+num_classes
@@ -123,8 +134,6 @@ class Yolov7Model(nn.Module):
     @staticmethod
     def _make_grid(num_rows, num_cols):
         """Create grid with two stacked matrixes, one with col idxs and the other with row idxs
-
-        # TODO: Add example of matrixes
         """
         meshgrid = torch.meshgrid(
             [torch.arange(num_rows), torch.arange(num_cols)], indexing="ij"

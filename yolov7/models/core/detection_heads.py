@@ -13,8 +13,6 @@ class Yolov7DetectionHead(nn.Module):
         :param anchor_sizes_per_layer: (num_layers, num_anchor_sizes, 2)
 
         TODO: Stride inside the config, and then resize anchors here in the constructor
-        TODO: All models to have tensor anchors
-
         """
         super().__init__()
         self.num_classes = num_classes

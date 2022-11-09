@@ -135,7 +135,7 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=
 
 
 def transform_model_outputs_into_predictions(outputs: torch.tensor) -> torch.tensor:
-    """Transform moraw outputs into proper cx, cy, w, h
+    """Transform model outputs into proper cx, cy, w, h
 
     For xy we apply a sigmoid and a translation from (0,1) -> (-0.5, 1.5). This means that the
     model can correct each anchor point to be 0.5 positions in the grid smaller or 1.5 positions

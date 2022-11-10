@@ -24,7 +24,6 @@ class Yolov7Model(nn.Module):
         self.model, self.save_output_layer_idxs = create_model_from_config(
             model_config=deepcopy(self.config),
         )
-        self.initialize_anchors()
 
     @property
     def detection_head(self):

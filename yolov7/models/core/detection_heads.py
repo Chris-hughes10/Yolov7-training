@@ -7,12 +7,17 @@ from yolov7.models.core.layers import ImplicitAdd, ImplicitMultiply
 
 class Yolov7DetectionHead(nn.Module):
 
-    def __init__(self, num_classes: int=80, anchor_sizes_per_layer: torch.Tensor=(), in_channels_per_layer: List[int]=()):
+    def __init__(
+        self,
+        num_classes: int=80,
+        anchor_sizes_per_layer: torch.Tensor=(),
+        strides: torch.Tensor=(),
+        in_channels_per_layer: List[int]=()
+    ):
         """
         :param num_classes:
         :param anchor_sizes_per_layer: (num_layers, num_anchor_sizes, 2)
-
-        TODO: Stride inside the config, and then resize anchors here in the constructor
+        :param strides: (num_layers)
         """
         super().__init__()
         self.num_classes = num_classes
@@ -20,10 +25,13 @@ class Yolov7DetectionHead(nn.Module):
         self.num_layers = anchor_sizes_per_layer.shape[0]
         self.num_anchor_sizes = anchor_sizes_per_layer.shape[1]
         self.grid = [torch.zeros(1)] * self.num_layers  # init grid
-        self.register_buffer("anchor_sizes_per_layer", anchor_sizes_per_layer.float())
+        self.strides = strides
         self.register_buffer(
             "anchor_grid", anchor_sizes_per_layer.float().view(self.num_layers, 1, self.num_anchor_sizes, 1, 1, 2)
         )
+        grid_coord_anchor_sizes = anchor_sizes_per_layer.float() / strides.view(-1, 1, 1)
+        self.register_buffer("anchor_sizes_per_layer", grid_coord_anchor_sizes)
+
         # With [:self.num_layers], ensure we only use lead heads and no aux heads.
         self._conv2d_list = nn.ModuleList(
             nn.Conv2d(in_channels, self.num_outputs * self.num_anchor_sizes, 1)

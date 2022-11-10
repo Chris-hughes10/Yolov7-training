@@ -24,7 +24,8 @@ def get_yolov7_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=
             [[36, 75], [76, 55], [72, 146]],
             [[142, 110], [192, 243], [459, 401]],
         ])
-
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32.])
     detection_head = Yolov7DetectionHead
 
     return {
@@ -144,7 +145,7 @@ def get_yolov7_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=
             [75, 1, RepConv, [256, 3, 1]],
             [88, 1, RepConv, [512, 3, 1]],
             [101, 1, RepConv, [1024, 3, 1]],
-            [[102, 103, 104], 1, detection_head, [num_classes, anchor_sizes_per_layer]],
+            [[102, 103, 104], 1, detection_head, [num_classes, anchor_sizes_per_layer, strides]],
         ],
     }
 
@@ -157,6 +158,8 @@ def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels
             [[142, 110], [192, 243], [459, 401]],  # P5/32
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32.])
     detection_head = Yolov7DetectionHead
 
     return {
@@ -167,7 +170,7 @@ def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels
         "image_size": (640, 640),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchor_sizes_per_layer,
+        "anchor_sizes_per_layer": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, Conv, [40, 3, 1]],  # 0
             [-1, 1, Conv, [80, 3, 2]],  # 1-P1/2
@@ -292,7 +295,7 @@ def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels
             [87, 1, Conv, [320, 3, 1]],
             [102, 1, Conv, [640, 3, 1]],
             [117, 1, Conv, [1280, 3, 1]],
-            [[118, 119, 120], 1, detection_head, [num_classes, anchor_sizes_per_layer]],
+            [[118, 119, 120], 1, detection_head, [num_classes, anchor_sizes_per_layer, strides]],
         ],  # Detect(P3, P4, P5)
     }
 
@@ -306,6 +309,8 @@ def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
             [[436, 615], [739, 380], [925, 792]],  # P6/64
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32., 64.])
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
@@ -316,7 +321,7 @@ def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchor_sizes_per_layer,
+        "anchor_sizes_per_layer": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [64, 3, 1]],  # 1-P1/2
@@ -446,7 +451,7 @@ def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [114, 115, 116, 117, 118, 119, 120, 121],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer],
+                [num_classes, anchor_sizes_per_layer, strides],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -461,6 +466,8 @@ def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
             [[436, 615], [739, 380], [925, 792]],  # P6/64
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32., 64.])
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
@@ -471,7 +478,7 @@ def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchor_sizes_per_layer,
+        "anchor_sizes_per_layer": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [96, 3, 1]],  # 1-P1/2
@@ -645,7 +652,7 @@ def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [158, 159, 160, 161, 162, 163, 164, 165],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer],
+                [num_classes, anchor_sizes_per_layer, strides],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -660,6 +667,8 @@ def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
             [[436, 615], [739, 380], [925, 792]],  # P6/64
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32., 64.])
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
@@ -670,7 +679,7 @@ def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
         "image_size": (1280, 1280),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchor_sizes_per_layer,
+        "anchor_sizes_per_layer": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, ReOrg, []],  # 0
             [-1, 1, Conv, [80, 3, 1]],  # 1-P1/2
@@ -822,7 +831,7 @@ def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [136, 137, 138, 139, 140, 141, 142, 143],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer],
+                [num_classes, anchor_sizes_per_layer, strides],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -837,6 +846,8 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
             [[436, 615], [739, 380], [925, 792]],  # P6/64
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32., 64.])
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
@@ -1120,7 +1131,7 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
                 [257, 258, 259, 260, 261, 262, 263, 264],
                 1,
                 detection_head,
-                [num_channels, anchor_sizes_per_layer],
+                [num_channels, anchor_sizes_per_layer, strides],
             ],
             # Detect(P3, P4, P5, P6)
         ],
@@ -1135,6 +1146,8 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
             [[116, 90], [156, 198], [373, 326]],  # P5/32,
         ])
 
+    # `strides` are defined by architecture, explicit for clarity
+    strides = torch.tensor([8., 16., 32.])
     detection_head = Yolov7DetectionHead
 
     return {
@@ -1145,7 +1158,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
         "image_size": (640, 640),
         "depth_multiple": 1.0,
         "width_multiple": 1.0,
-        "anchors": anchor_sizes_per_layer,
+        "anchor_sizes_per_layer": anchor_sizes_per_layer,
         "backbone": [
             [-1, 1, Conv, [32, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 0-P1/2
             [-1, 1, Conv, [64, 3, 2, None, 1, nn.LeakyReLU(0.1)]],  # 1-P2/4
@@ -1230,7 +1243,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
                 [74, 75, 76],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer],
+                [num_classes, anchor_sizes_per_layer, strides],
             ],  # Detect(P3, P4, P5)
         ],
     }

@@ -7,7 +7,6 @@ from typing import List
 import torch
 import torchvision
 from torch import nn
-from yolov7.anchors import check_anchor_order
 from yolov7.loss import PredIdx, transform_model_outputs_into_predictions
 from yolov7.models.config_builder import create_model_from_config
 
@@ -21,7 +20,6 @@ class Yolov7Model(nn.Module):
         self.config = model_config
         self.num_channels = self.config["num_channels"]
         self.num_classes = self.config["num_classes"]
-        self.stride = None
 
         self.model, self.save_output_layer_idxs = create_model_from_config(
             model_config=deepcopy(self.config),
@@ -31,19 +29,6 @@ class Yolov7Model(nn.Module):
     @property
     def detection_head(self):
         return self.model[-1]
-
-    def initialize_anchors(self):
-        # detection_head = self.detection_head
-        MAX_NUM_LAYERS = 4  # Across all architectures
-        SAMPLE_IMAGE_SIZE = 256  # At least 2x max grid size, multiple of 8, value irrelevant
-        sample_input = torch.zeros(1, self.num_channels, SAMPLE_IMAGE_SIZE, SAMPLE_IMAGE_SIZE)
-        grid_sizes = [out.shape[-2] for out in self.forward(sample_input)[:MAX_NUM_LAYERS]]
-        self.detection_head.stride = SAMPLE_IMAGE_SIZE / torch.tensor(grid_sizes)
-        self.detection_head.anchor_sizes_per_layer /= self.detection_head.stride.view(
-            -1, 1, 1
-        )  # Anchors into grid coordinates
-        check_anchor_order(self.detection_head)
-        self.stride = self.detection_head.stride
 
     def get_parameter_groups(self):
         conv_weights = {
@@ -98,9 +83,6 @@ class Yolov7Model(nn.Module):
         - If not `multiple_labels_per_box`: Only one box per output, with class with higher conf.
         - Otherwise: Box duplicated for each class with conf above `conf_thres`.
         """
-        # never ran in training
-        # list of each detection head output (which changes grid x and grid y and anchors)
-        # num_images, num_anchors, grid_x, grid_y, 4+1+num_classes
         preds = self._derive_preds(fpn_heads_outputs)
         formatted_preds = self._format_preds(
             preds, conf_thres, max_detections, multiple_labels_per_box
@@ -116,7 +98,7 @@ class Yolov7Model(nn.Module):
             fpn_head_preds[
                 ..., [PredIdx.CY, PredIdx.CX]
             ] += grid  # Grid corrections -> Grid coordinates
-            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.stride[
+            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.strides[
                 layer_idx
             ]  # -> Image coordinates
             # TODO: Probably can do it in a more standardized way

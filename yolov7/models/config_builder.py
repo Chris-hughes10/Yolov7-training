@@ -78,9 +78,6 @@ def create_model_from_config(model_config):
             Yolov7DetectionHeadWithAux.__name__,
         }:
             module_args.append([ch[x] for x in from_idx])
-            # if isinstance(module_args[1], int):
-            #     # number of anchors
-            #     module_args[1] = [list(range(module_args[1] * 2))] * len(from_idx)
         elif module_ is ReOrg:
             num_out_channels = ch[from_idx] * 4
         else:

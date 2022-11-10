@@ -30,7 +30,7 @@ def calculate_resized_gt_wh(gt_wh, image_sizes, target_image_size=640):
     tiny_boxes_exist = (resized_gt_wh < 3).any(1).sum()
     if tiny_boxes_exist:
         print(
-            f"""WARNING: Extremely small objects found. 
+            f"""WARNING: Extremely small objects found.
             {tiny_boxes_exist} of {len(resized_gt_wh)} labels are < 3 pixels in size. These will be removed
             """
         )
@@ -235,8 +235,8 @@ def sort_anchors(anchors):
 def update_model_anchors(model, new_anchors):
     # TODO move inside model
     new_anchors = torch.tensor(
-        new_anchors, device=model.detection_head.anchors.device
-    ).type_as(model.detection_head.anchors)
+        new_anchors, device=model.detection_head.anchor_sizes_per_layer.device
+    ).type_as(model.detection_head.anchor_sizes_per_layer)
 
     # update anchor grid used for inference
     model.detection_head.anchor_grid[:] = new_anchors.clone().view_as(
@@ -244,9 +244,9 @@ def update_model_anchors(model, new_anchors):
     )
 
     # update anchors used for loss calculation
-    model.detection_head.anchors[:] = new_anchors.clone().view_as(
-        model.detection_head.anchors
-    ) / model.detection_head.stride.to(model.detection_head.anchors.device).view(
+    model.detection_head.anchor_sizes_per_layer[:] = new_anchors.clone().view_as(
+        model.detection_head.anchor_sizes_per_layer
+    ) / model.detection_head.strides.to(model.detection_head.anchor_sizes_per_layer.device).view(
         -1, 1, 1
     )
 

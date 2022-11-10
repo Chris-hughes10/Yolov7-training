@@ -27,13 +27,13 @@ MODEL_CONFIGS = {
 def create_yolov7_model(
     architecture,
     num_classes=80,
-    anchors=None,
+    anchor_sizes_per_layer=None,
     num_channels=3,
     pretrained=True,
 ):
     config = MODEL_CONFIGS[architecture](
         num_classes=num_classes,
-        anchors=anchors,
+        anchor_sizes_per_layer=anchor_sizes_per_layer,
         num_channels=num_channels,
     )
 

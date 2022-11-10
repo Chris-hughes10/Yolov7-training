@@ -2,17 +2,14 @@
 
 import logging
 from copy import deepcopy
+from typing import List
 
 import torch
 import torchvision
 from torch import nn
-from yolov7.anchors import check_anchor_order
 from yolov7.loss import PredIdx, transform_model_outputs_into_predictions
 from yolov7.models.config_builder import create_model_from_config
-from yolov7.models.core.detection_heads import (
-    Yolov7DetectionHead,
-    Yolov7DetectionHeadWithAux,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,41 +20,14 @@ class Yolov7Model(nn.Module):
         self.config = model_config
         self.num_channels = self.config["num_channels"]
         self.num_classes = self.config["num_classes"]
-        self.stride = None
 
         self.model, self.save_output_layer_idxs = create_model_from_config(
             model_config=deepcopy(self.config),
         )
-        self.initialize_anchors()
 
     @property
     def detection_head(self):
         return self.model[-1]
-
-    def initialize_anchors(self):
-        detection_head = self.model[-1]
-        s = 256  # 2x min stride
-        if isinstance(detection_head, Yolov7DetectionHead):
-            detection_head.stride = torch.tensor(
-                [
-                    s / x.shape[-2]
-                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))
-                ]
-            )
-
-        elif isinstance(detection_head, Yolov7DetectionHeadWithAux):
-            detection_head.stride = torch.tensor(
-                [
-                    s / x.shape[-2]
-                    for x in self.forward(torch.zeros(1, self.num_channels, s, s))[:4]
-                ]
-            )
-
-        detection_head.anchors /= detection_head.stride.view(
-            -1, 1, 1
-        )  # Anchors into grid coordinates
-        check_anchor_order(detection_head)
-        self.stride = detection_head.stride
 
     def get_parameter_groups(self):
         conv_weights = {
@@ -79,33 +49,39 @@ class Yolov7Model(nn.Module):
         for module_ in self.model:
             if module_.from_index != -1:
                 # if input not from previous layer, get intermediate outputs
-                x = (
-                    intermediate_outputs[module_.from_index]
-                    if isinstance(module_.from_index, int)
-                    else [
-                        x if j == -1 else intermediate_outputs[j]
-                        for j in module_.from_index
+                if isinstance(module_.from_index, int):
+                    x = intermediate_outputs[module_.from_index]
+                else:
+                    x = [
+                        x if idx == -1 else intermediate_outputs[idx]
+                        for idx in module_.from_index
                     ]
-                )
 
-            x = module_(x)  # run
+            x = module_(x)
 
             intermediate_outputs.append(
                 x if module_.attach_index in self.save_output_layer_idxs else None
-            )  # save output
+            )
         return x
 
     def postprocess(
         self,
-        fpn_heads_outputs,
-        conf_thres=0.001,
-        max_detections=30000,
-        multiple_labels_per_box=True,
-    ):
-        """TODO: Docstring"""
-        # never ran in training
-        # list of each detection head output (which changes grid x and grid y and anchors)
-        # num_images, num_anchors, grid_x, grid_y, 4+1+num_classes
+        fpn_heads_outputs: List[torch.Tensor],
+        conf_thres: float=0.001,
+        max_detections: int=30000,
+        multiple_labels_per_box: bool=True,
+    ) -> List[torch.Tensor]:
+        """Convert FPN outputs into human-interpretable box predictions
+
+        The outputted predictions are a list and each element corresponds to one image, in the
+        same order they were passed to the model.
+
+        Each element is a tensor with all the box predictions for that image. The dimensions of
+        such tensor are Nx6 (x1 y1 x2 y2 conf class_idx), where N is the number of outputted boxes.
+
+        - If not `multiple_labels_per_box`: Only one box per output, with class with higher conf.
+        - Otherwise: Box duplicated for each class with conf above `conf_thres`.
+        """
         preds = self._derive_preds(fpn_heads_outputs)
         formatted_preds = self._format_preds(
             preds, conf_thres, max_detections, multiple_labels_per_box
@@ -121,7 +97,7 @@ class Yolov7Model(nn.Module):
             fpn_head_preds[
                 ..., [PredIdx.CY, PredIdx.CX]
             ] += grid  # Grid corrections -> Grid coordinates
-            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.stride[
+            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.strides[
                 layer_idx
             ]  # -> Image coordinates
             # TODO: Probably can do it in a more standardized way
@@ -139,8 +115,6 @@ class Yolov7Model(nn.Module):
     @staticmethod
     def _make_grid(num_rows, num_cols):
         """Create grid with two stacked matrixes, one with col idxs and the other with row idxs
-
-        # TODO: Add example of matrixes
         """
         meshgrid = torch.meshgrid(
             [torch.arange(num_rows), torch.arange(num_cols)], indexing="ij"

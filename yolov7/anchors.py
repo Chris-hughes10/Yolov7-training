@@ -197,7 +197,7 @@ def evolve_anchors(
 
     pbar = tqdm(range(num_iterations), desc=f"Evolving anchors with Genetic Algorithm:")
     for i, _ in enumerate(pbar):
-        # Define mutation by sampling noise from a normal distribution 
+        # Define mutation by sampling noise from a normal distribution
         anchor_mutation = np.ones(anchor_shape)
         anchor_mutation = (
             (np.random.random(anchor_shape) < mutation_probability)
@@ -222,17 +222,21 @@ def evolve_anchors(
 
     return proposed_anchors
 
+
 def sort_anchors(anchors):
     """
     Returns a sorted tensor of anchors in ascending order based on the minimum dimension for each anchor.
     """
-    return torch.as_tensor(anchors)[torch.sort(torch.as_tensor(anchors.min(-1))).indices]
+    return torch.as_tensor(anchors)[
+        torch.sort(torch.as_tensor(anchors.min(-1))).indices
+    ]
+
 
 def update_model_anchors(model, new_anchors):
     # TODO move inside model
-    new_anchors = torch.tensor(new_anchors, device=model.detection_head.anchors.device).type_as(
-        model.detection_head.anchors
-    )
+    new_anchors = torch.tensor(
+        new_anchors, device=model.detection_head.anchors.device
+    ).type_as(model.detection_head.anchors)
 
     # update anchor grid used for inference
     model.detection_head.anchor_grid[:] = new_anchors.clone().view_as(

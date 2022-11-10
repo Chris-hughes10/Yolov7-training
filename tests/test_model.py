@@ -31,16 +31,10 @@ def test_model_outputs(image_tensor):
     torch.manual_seed(0)
     old_model = create_yolov7_model(architecture="yolov7-e6e", pretrained=True, legacy=True)
 
-    # new_loss_func = create_yolov7_loss(new_model, ota_loss=True, aux_loss=False)
-    # old_loss_func = create_yolov7_loss(old_model, ota_loss=True, aux_loss=False)
-
     new_image_tensor = image_tensor.detach().clone().requires_grad_()
     old_image_tensor = image_tensor.detach().clone().requires_grad_()
     new_outputs = new_model(new_image_tensor[None])
     old_outputs = old_model(old_image_tensor[None])
-
-    # new_loss_func.backwards()
-    # old_loss_func.backwards()
 
     for i, (new_o, old_o) in enumerate(zip(new_outputs, old_outputs)):
         assert (new_o.round(decimals=5) == old_o.round(decimals=5)).all()
@@ -59,25 +53,3 @@ def test_outputs_are_constant(image_tensor, arch):
 
     for (o, prev_o) in zip(outputs, prev_outputs):
         assert (o.round(decimals=5) == prev_o.round(decimals=5)).all()
-
-
-
-
-# def test_model_preds(image_tensor):
-#     new_model = create_yolov7_model(architecture="yolov7", pretrained=True)
-#     old_model = create_yolov7_model(architecture="yolov7", pretrained=True, legacy=True)
-
-#     new_model.eval()
-#     old_model.eval()
-
-#     with torch.no_grad():
-#         new_outputs = new_model(image_tensor[None])
-#         new_preds = new_model.postprocess(new_outputs)
-
-#         old_outputs = old_model(image_tensor[None])
-#         old_preds = legacy_process_yolov7_outputs(old_outputs)
-
-#     for i, (new_o, old_o) in enumerate(zip(new_outputs, old_outputs[1])):
-#         assert (new_o.round(decimals=15) == old_o.round(decimals=15)).all()
-
-#     assert (new_preds[0].round(decimals=15) == old_preds[0].round(decimals=15)).all()

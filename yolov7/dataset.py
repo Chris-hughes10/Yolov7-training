@@ -1,4 +1,3 @@
-from itertools import chain
 
 import albumentations as A
 import numpy as np
@@ -28,7 +27,7 @@ def create_base_transforms(target_image_size):
     )
 
 
-def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=False):
+def create_yolov7_transforms(image_size=(640, 640), training=False, training_transforms=(A.HorizontalFlip(p=0.5), )):
     transforms = [
         A.LongestMaxSize(max(image_size)),
         A.PadIfNeeded(
@@ -41,9 +40,7 @@ def create_yolov7_transforms(image_size=(1280, 1280), flip_prob=0.5, training=Fa
 
     if training:
         transforms.extend(
-            [
-                A.HorizontalFlip(p=flip_prob),
-            ]
+            training_transforms
         )
 
     return A.Compose(
@@ -62,6 +59,14 @@ def convert_xyxy_to_cxcywh(bboxes):
 
 
 class Yolov7Dataset(Dataset):
+    """
+    A dataset which takes an object detection dataset returning (image, boxes, classes, image_id, image_hw)
+    and applies the necessary preprocessing steps as required by Yolov7 models.
+
+    By default, this class expects the image, boxes (N, 4) and classes (N,) to be numpy arrays,
+    with the boxes in (x1,y1,x2,y2) format, but this behaviour can be modified by
+    overriding the `load_from_dataset` method.
+    """
     def __init__(self, dataset, transforms=None):
         self.ds = dataset
         self.transforms = transforms

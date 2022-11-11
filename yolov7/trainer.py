@@ -53,7 +53,7 @@ class DisableAugmentationCallback(TrainerCallback):
 
 
 def filter_eval_predictions(
-    predictions: Tensor, confidence_threshold: float = 0.2, nms_threshold: float = 0.65
+    predictions: List[Tensor], confidence_threshold: float = 0.2, nms_threshold: float = 0.65
 ) -> List[Tensor]:
     nms_preds = []
     for pred in predictions:

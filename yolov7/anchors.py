@@ -230,35 +230,3 @@ def sort_anchors(anchors):
     return torch.as_tensor(anchors)[
         torch.sort(torch.as_tensor(anchors.min(-1))).indices
     ]
-
-
-def update_model_anchors(model, new_anchors):
-    # TODO move inside model
-    new_anchors = torch.tensor(
-        new_anchors, device=model.detection_head.anchor_sizes_per_layer.device
-    ).type_as(model.detection_head.anchor_sizes_per_layer)
-
-    # update anchor grid used for inference
-    model.detection_head.anchor_grid[:] = new_anchors.clone().view_as(
-        model.detection_head.anchor_grid
-    )
-
-    # update anchors used for loss calculation
-    model.detection_head.anchor_sizes_per_layer[:] = new_anchors.clone().view_as(
-        model.detection_head.anchor_sizes_per_layer
-    ) / model.detection_head.strides.to(model.detection_head.anchor_sizes_per_layer.device).view(
-        -1, 1, 1
-    )
-
-    check_anchor_order(model.detection_head)
-
-
-def check_anchor_order(m):
-    # Check anchor order against stride order for YOLO Detect() module m, and correct if necessary
-    a = m.anchor_grid.prod(-1).view(-1)  # anchor area
-    da = a[-1] - a[0]  # delta a
-    ds = m.stride[-1] - m.stride[0]  # delta s
-    if da.sign() != ds.sign():  # same order
-        print("Reversing anchor order")
-        m.anchors[:] = m.anchors.flip(0)
-        m.anchor_grid[:] = m.anchor_grid.flip(0)

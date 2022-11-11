@@ -7,9 +7,9 @@ from typing import List
 import torch
 import torchvision
 from torch import nn
+
 from yolov7.loss import PredIdx, transform_model_outputs_into_predictions
 from yolov7.models.config_builder import create_model_from_config
-
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +67,9 @@ class Yolov7Model(nn.Module):
     def postprocess(
         self,
         fpn_heads_outputs: List[torch.Tensor],
-        conf_thres: float=0.001,
-        max_detections: int=30000,
-        multiple_labels_per_box: bool=True,
+        conf_thres: float = 0.001,
+        max_detections: int = 30000,
+        multiple_labels_per_box: bool = True,
     ) -> List[torch.Tensor]:
         """Convert FPN outputs into human-interpretable box predictions
 
@@ -97,7 +97,9 @@ class Yolov7Model(nn.Module):
             fpn_head_preds[
                 ..., [PredIdx.CY, PredIdx.CX]
             ] += grid  # Grid corrections -> Grid coordinates
-            fpn_head_preds[..., [PredIdx.CX, PredIdx.CY]] *= self.detection_head.strides[
+            fpn_head_preds[
+                ..., [PredIdx.CX, PredIdx.CY]
+            ] *= self.detection_head.strides[
                 layer_idx
             ]  # -> Image coordinates
             # TODO: Probably can do it in a more standardized way
@@ -114,8 +116,7 @@ class Yolov7Model(nn.Module):
 
     @staticmethod
     def _make_grid(num_rows, num_cols):
-        """Create grid with two stacked matrixes, one with col idxs and the other with row idxs
-        """
+        """Create grid with two stacked matrixes, one with col idxs and the other with row idxs"""
         meshgrid = torch.meshgrid(
             [torch.arange(num_rows), torch.arange(num_cols)], indexing="ij"
         )
@@ -201,6 +202,42 @@ class Yolov7Model(nn.Module):
             formatted_preds[image_idx] = detections_for_image
 
         return formatted_preds
+
+    def update_model_anchors(self, new_anchors):
+        """
+        Update the anchor sizes per layer that will be used by the model
+        """
+        new_anchors = torch.tensor(
+            new_anchors, device=self.detection_head.anchor_sizes_per_layer.device
+        ).type_as(self.detection_head.anchor_sizes_per_layer)
+
+        # update anchor grid used for inference
+        self.detection_head.anchor_grid[:] = new_anchors.clone().view_as(
+            self.detection_head.anchor_grid
+        )
+
+        # update anchors used for loss calculation
+        self.detection_head.anchor_sizes_per_layer[:] = new_anchors.clone().view_as(
+            self.detection_head.anchor_sizes_per_layer
+        ) / self.detection_head.strides.to(
+            self.detection_head.anchor_sizes_per_layer.device
+        ).view(
+            -1, 1, 1
+        )
+
+        check_anchor_order(self.detection_head)
+
+
+def check_anchor_order(detection_head):
+    """
+    Check anchor order against stride order for YOLO Detect() module m, and correct if necessary
+    """
+    anchor_area = detection_head.anchor_grid.prod(-1).view(-1)
+    delta_area = anchor_area[-1] - anchor_area[0]
+    delta_stride = detection_head.stride[-1] - detection_head.stride[0]
+    if delta_area.sign() != delta_stride.sign():  # same order
+        detection_head.anchors[:] = detection_head.anchors.flip(0)
+        detection_head.anchor_grid[:] = detection_head.anchor_grid.flip(0)
 
 
 def scale_bboxes_to_original_image_size(

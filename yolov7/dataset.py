@@ -1,4 +1,3 @@
-
 import albumentations as A
 import numpy as np
 import torch
@@ -27,7 +26,11 @@ def create_base_transforms(target_image_size):
     )
 
 
-def create_yolov7_transforms(image_size=(640, 640), training=False, training_transforms=(A.HorizontalFlip(p=0.5), )):
+def create_yolov7_transforms(
+    image_size=(640, 640),
+    training=False,
+    training_transforms=(A.HorizontalFlip(p=0.5),),
+):
     transforms = [
         A.LongestMaxSize(max(image_size)),
         A.PadIfNeeded(
@@ -39,9 +42,7 @@ def create_yolov7_transforms(image_size=(640, 640), training=False, training_tra
     ]
 
     if training:
-        transforms.extend(
-            training_transforms
-        )
+        transforms.extend(training_transforms)
 
     return A.Compose(
         transforms,
@@ -67,6 +68,7 @@ class Yolov7Dataset(Dataset):
     with the boxes in (x1,y1,x2,y2) format, but this behaviour can be modified by
     overriding the `load_from_dataset` method.
     """
+
     def __init__(self, dataset, transforms=None):
         self.ds = dataset
         self.transforms = transforms

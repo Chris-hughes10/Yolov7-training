@@ -1,9 +1,10 @@
+import math
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from pytorch_accelerated.callbacks import TrainerCallback
-from pytorch_accelerated.utils import local_process_zero_only
+from pytorch_accelerated.utils import ModelEma, local_process_zero_only
 
 from yolov7.plotting import annotate_image
 
@@ -15,6 +16,21 @@ def intersect_dicts(da, db, exclude=()):
         for k, v in da.items()
         if k in db and not any(x in k for x in exclude) and v.shape == db[k].shape
     }
+
+
+class Yolov7ModelEma(ModelEma):
+    def __init__(self, model, decay=0.9999):
+        super().__init__(model, decay)
+        self.num_updates = 0
+        self.decay_fn = lambda x: decay * (
+            1 - math.exp(-x / 2000)
+        )  # decay exponential ramp (to help early epochs)
+        self.decay = self.decay_fn(self.num_updates)
+
+    def update(self, model):
+        super().update(model)
+        self.num_updates += 1
+        self.decay = self.decay_fn(self.num_updates)
 
 
 class SaveBatchesCallback(TrainerCallback):

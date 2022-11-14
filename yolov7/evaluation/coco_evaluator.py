@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Collection
+from typing import Collection, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -33,7 +33,7 @@ class COCOMeanAveragePrecision:
     AREA_RANGE = np.array([0**2, 1e5**2])
     AREA_RANGE_LABEL = "all"
     # Maximum number of predictions we account for each image.
-    MAX_PREDS = 100  # TODO was this the default?
+    MAX_PREDS = 100
 
     def __init__(self, iou_threshold: float = None, verbose=False):
         """

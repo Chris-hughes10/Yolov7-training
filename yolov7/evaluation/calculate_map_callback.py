@@ -53,7 +53,8 @@ class CalculateMeanAveragePrecisionCallback(TrainerCallback):
 
     def on_eval_step_end(self, trainer, batch, batch_output, **kwargs):
         predictions = batch_output["predictions"]
-        self._update(predictions)
+        if len(predictions) > 0:
+            self._update(predictions)
 
     def on_eval_epoch_end(self, trainer, **kwargs):
         preds_df = pd.DataFrame(

@@ -6,9 +6,7 @@ from pytorch_accelerated import Trainer
 from pytorch_accelerated.callbacks import TrainerCallback
 from torch import Tensor
 
-from yolov7.models.yolo import (
-    scale_bboxes_to_original_image_size,
-)
+from yolov7.models.yolo import scale_bboxes_to_original_image_size
 
 
 def scale_bboxes_to_original_image_size(
@@ -53,7 +51,9 @@ class DisableAugmentationCallback(TrainerCallback):
 
 
 def filter_eval_predictions(
-    predictions: List[Tensor], confidence_threshold: float = 0.2, nms_threshold: float = 0.65
+    predictions: List[Tensor],
+    confidence_threshold: float = 0.2,
+    nms_threshold: float = 0.65,
 ) -> List[Tensor]:
     nms_preds = []
     for pred in predictions:
@@ -116,7 +116,7 @@ class Yolov7Trainer(Trainer):
 
     def calculate_eval_batch_loss(self, batch) -> dict:
         with torch.no_grad():
-            images, labels, image_idxs, original_image_sizes = (
+            images, labels, image_ids, original_image_sizes = (
                 batch[0],
                 batch[1],
                 batch[2],
@@ -137,7 +137,7 @@ class Yolov7Trainer(Trainer):
             )[None].repeat(len(preds), 1)
 
         formatted_predictions = self.get_formatted_preds(
-            image_idxs, preds, original_image_sizes, resized_image_sizes
+            image_ids, preds, original_image_sizes, resized_image_sizes
         )
 
         gathered_predictions = (
@@ -154,19 +154,14 @@ class Yolov7Trainer(Trainer):
         }
 
     def get_formatted_preds(
-        self, image_idxs, preds, original_image_sizes, resized_image_sizes
+        self, image_ids, preds, original_image_sizes, resized_image_sizes
     ):
         """
-        scale bboxes to original image dimensions, and associate image idx with predictions
-        :param image_idxs:
-        :param preds:
-        :param original_image_sizes:
-        :param resized_image_sizes:
-        :return:
+        scale bboxes to original image dimensions, and associate image id with predictions
         """
         formatted_preds = []
-        for i, (image_idx, image_preds) in enumerate(zip(image_idxs, preds)):
-            # x1, y1, x2, y2, score, class_id, image_idx
+        for i, (image_id, image_preds) in enumerate(zip(image_ids, preds)):
+            # image_id, x1, y1, x2, y2, score, class_id
             formatted_preds.append(
                 torch.cat(
                     (
@@ -177,14 +172,14 @@ class Yolov7Trainer(Trainer):
                             is_padded=True,
                         ),
                         image_preds[:, 4:],
-                        image_idx.repeat(image_preds.shape[0])[None].T,
+                        image_id.repeat(image_preds.shape[0])[None].T,
                     ),
                     1,
                 )
             )
 
         if not formatted_preds:
-            # create placeholder so that it can be gathered across processes
+            # if no predictions, create placeholder so that it can be gathered across processes
             stacked_preds = torch.tensor(
                 [self.YOLO7_PADDING_VALUE] * 7, device=self.device
             )[None]

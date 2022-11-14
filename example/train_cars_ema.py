@@ -133,13 +133,10 @@ DATA_PATH = Path("/".join(Path(__file__).absolute().parts[:-2])) / "data/cars"
 def main(
     data_path: str = DATA_PATH,
     image_size: int = 640,
-    pretrained: bool = True,
-    num_epochs: int = 30,
+    pretrained: bool = False,
+    num_epochs: int = 300,
     batch_size: int = 8,
 ):
-
-    pretrained = False
-    num_epochs = 300
 
     # load data
     data_path = Path(data_path)
@@ -250,5 +247,4 @@ def main(
 
 
 if __name__ == "__main__":
-    os.environ["mixed_precision"] = "fp16"
     main()

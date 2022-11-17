@@ -76,9 +76,15 @@ class Yolov7DetectionHead(nn.Module):
 
 class Yolov7DetectionHeadWithAux(Yolov7DetectionHead):
     def __init__(
-        self, num_classes=80, anchor_sizes_per_layer=(), in_channels_per_layer=()
+        self,
+        num_classes=80,
+        anchor_sizes_per_layer=(),
+        strides: torch.Tensor = (),
+        in_channels_per_layer=(),
     ):
-        super().__init__(num_classes, anchor_sizes_per_layer, in_channels_per_layer)
+        super().__init__(
+            num_classes, anchor_sizes_per_layer, strides, in_channels_per_layer
+        )
         self.m2 = nn.ModuleList(
             nn.Conv2d(in_channels, self.num_outputs * self.num_anchor_sizes, 1)
             for in_channels in in_channels_per_layer[self.num_layers :]

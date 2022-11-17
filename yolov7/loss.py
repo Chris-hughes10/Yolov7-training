@@ -262,7 +262,9 @@ class Yolov7Loss:
         anchor_boxes_per_layer, targets_per_layer = self.find_center_prior(
             fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
         )
-        for layer_idx, fpn_head_outputs in enumerate(fpn_heads_outputs):
+        for layer_idx, fpn_head_outputs in enumerate(
+            fpn_heads_outputs[: len(anchor_boxes_per_layer)]
+        ):
             (
                 layer_box_loss,
                 layer_obj_loss,

@@ -1,2 +1,9 @@
 .idea/*
 *.iml
+*.pyc
+/model_configs/
+/coco_dataset/
+**/.ipynb_checkpoints/
+/cars_dataset/
+/trained_models/
+/data/*

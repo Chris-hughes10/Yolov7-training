@@ -1,4 +1,4 @@
-jupyter: port=8888
+jupyter: port=8890
 jupyter:
 	docker build . --tag yolov7
 	# Start a jupyter server inside the docker environment of the specified experiment

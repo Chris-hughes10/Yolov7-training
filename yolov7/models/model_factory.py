@@ -41,6 +41,10 @@ def create_yolov7_model(
 
     if pretrained:
         state_dict_path = config["state_dict_path"]
+        if state_dict is None:
+            raise ValueError(
+                "Pretrained weights are not available for this architecture"
+            )
         try:
             # load state dict
             state_dict = intersect_dicts(

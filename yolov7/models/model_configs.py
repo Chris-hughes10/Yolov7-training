@@ -31,7 +31,7 @@ def get_yolov7_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=
     detection_head = Yolov7DetectionHead
 
     return {
-        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
@@ -172,7 +172,7 @@ def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels
     detection_head = Yolov7DetectionHead
 
     return {
-        "state_dict_path": "yolov7x_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7x_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
@@ -330,7 +330,7 @@ def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
-        "state_dict_path": "yolov7-w6_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-w6_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
@@ -489,7 +489,7 @@ def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
-        "state_dict_path": "yolov7-d6_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-d6_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
@@ -692,7 +692,7 @@ def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
-        "state_dict_path": "yolov7-e6_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-e6_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
@@ -873,7 +873,7 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
     detection_head = Yolov7DetectionHeadWithAux
 
     return {
-        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/alpha/yolov7-e6e_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-e6e_training_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": True,
         "num_channels": num_channels,
@@ -1175,7 +1175,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
     detection_head = Yolov7DetectionHead
 
     return {
-        "state_dict_path": "yolov7-tiny_training_state_dict.pt",
+        "state_dict_path": None,
         "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,

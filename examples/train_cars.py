@@ -1,4 +1,3 @@
-import os
 import random
 from functools import partial
 from pathlib import Path
@@ -27,11 +26,7 @@ from yolov7.dataset import (
 from yolov7.evaluation import CalculateMeanAveragePrecisionCallback
 from yolov7.loss_factory import create_yolov7_loss
 from yolov7.mosaic import MosaicMixupDataset, create_post_mosaic_transform
-from yolov7.trainer import (
-    Yolov7Trainer,
-    filter_eval_predictions,
-    DisableAugmentationCallback,
-)
+from yolov7.trainer import Yolov7Trainer, filter_eval_predictions
 from yolov7.utils import SaveBatchesCallback, Yolov7ModelEma
 
 

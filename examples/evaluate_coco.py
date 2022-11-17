@@ -1,10 +1,12 @@
 from functools import partial
+from pathlib import Path
+
 import albumentations as A
 import numpy as np
 import torch
 import torchvision
 from func_to_script import script
-from pytorch_accelerated.callbacks import get_default_callbacks, TrainerCallback
+from pytorch_accelerated.callbacks import TrainerCallback, get_default_callbacks
 from torchvision.datasets.coco import CocoDetection
 
 from yolov7 import create_yolov7_model
@@ -86,11 +88,17 @@ class ConvertPredictionClassesCallback(TrainerCallback):
         batch_output["predictions"][:, -2] = coco_91_class_ids
 
 
+DATA_PATH = Path("/".join(Path(__file__).absolute().parts[:-2])) / "data/coco"
+
+
 @script
 def run_evaluation(
-    coco_valid_images_path: str = "./data/coco/images/val2017",
-    coco_valid_annotations_file_path: str = "./data/coco/annotations/instances_val2017.json",
+    coco_valid_images_path: str = DATA_PATH / "val2017",
+    coco_valid_annotations_file_path: str = DATA_PATH
+    / "annotations/instances_val2017.json",
     image_size: int = 640,
+    architecture: str = "yolov7",
+    batch_size: int = 40,
 ):
     ds = COCOBaseDataset(
         coco_valid_images_path,
@@ -108,7 +116,7 @@ def run_evaluation(
         create_yolov7_transforms(training=False, image_size=(image_size, image_size)),
     )
 
-    model = create_yolov7_model(architecture="yolov7", pretrained=True)
+    model = create_yolov7_model(architecture=architecture, pretrained=True)
 
     trainer = Yolov7Trainer(
         model=model,
@@ -128,7 +136,7 @@ def run_evaluation(
 
     trainer.evaluate(
         dataset=eval_yds,
-        per_device_batch_size=40,
+        per_device_batch_size=batch_size,
         collate_fn=yolov7_collate_fn,
     )
 

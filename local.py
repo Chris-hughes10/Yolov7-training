@@ -15,7 +15,12 @@ if __name__ == "__main__":
 
     train_df, valid_df, lookups = load_cars_df(annotations_file_path, images_path)
     ds = DatasetAdaptor(images_path, train_df)
-    yolo_ds = Yolov7Dataset(ds, transforms=create_yolov7_transforms(image_size=(target_image_size, target_image_size)))
+    yolo_ds = Yolov7Dataset(
+        ds,
+        transforms=create_yolov7_transforms(
+            image_size=(target_image_size, target_image_size)
+        ),
+    )
     image_tensor, labels, image_id, image_size = yolo_ds[0]
 
     model = create_yolov7_model(architecture="yolov7", num_classes=2, pretrained=True)

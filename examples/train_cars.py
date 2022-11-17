@@ -70,7 +70,7 @@ def load_cars_df(annotations_file_path, images_path):
     return train_df, valid_df, lookups
 
 
-class DatasetAdaptor(Dataset):
+class CarsDatasetAdaptor(Dataset):
     def __init__(
         self,
         images_dir_path,

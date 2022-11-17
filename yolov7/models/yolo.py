@@ -91,7 +91,7 @@ class Yolov7Model(nn.Module):
     def _derive_preds(self, fpn_heads_outputs):
         all_preds = []
         for layer_idx, fpn_head_outputs in enumerate(
-            fpn_heads_outputs[: len(self.detection_head.strides)]
+            fpn_heads_outputs[: self.detection_head.num_layers]
         ):
             batch_size, _, num_rows, num_cols, *_ = fpn_head_outputs.shape
             grid = self._make_grid(num_rows, num_cols).to(fpn_head_outputs.device)

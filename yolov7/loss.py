@@ -263,7 +263,7 @@ class Yolov7Loss:
             fpn_heads_outputs, targets, n_anchors_per_target=self.ANCHORS_PER_TARGET
         )
         for layer_idx, fpn_head_outputs in enumerate(
-            fpn_heads_outputs[: len(anchor_boxes_per_layer)]
+            fpn_heads_outputs[: self.num_layers]
         ):
             (
                 layer_box_loss,

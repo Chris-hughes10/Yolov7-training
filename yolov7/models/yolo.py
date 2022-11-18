@@ -205,7 +205,7 @@ class Yolov7Model(nn.Module):
 
         return formatted_preds
 
-    def update_model_anchors(self, new_anchors):
+    def update_anchors(self, new_anchors):
         """
         Update the anchor sizes per layer that will be used by the model
         """
@@ -236,7 +236,7 @@ def check_anchor_order(detection_head):
     """
     anchor_area = detection_head.anchor_grid.prod(-1).view(-1)
     delta_area = anchor_area[-1] - anchor_area[0]
-    delta_stride = detection_head.stride[-1] - detection_head.stride[0]
+    delta_stride = detection_head.strides[-1] - detection_head.strides[0]
     if delta_area.sign() != delta_stride.sign():  # same order
         detection_head.anchors[:] = detection_head.anchors.flip(0)
         detection_head.anchor_grid[:] = detection_head.anchor_grid.flip(0)

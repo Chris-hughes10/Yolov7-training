@@ -9,7 +9,7 @@ This Repo includes:
 - Evaluation utilities using PyCOCOTools
 - A Generic model Trainer, which can be extended or adapted to new tasks
 
-Examples of use are available [here](./examples/), and more detail is provided in this blog post.
+Examples of use are available [here](./examples/), and more detail is provided in [this blog post](https://towardsdatascience.com/yolov7-a-deep-dive-into-the-current-state-of-the-art-for-object-detection-ce3ffedeeaeb?source=friends_link&sk=4281bc61b8197368d1092d8b8d6ffa64).
 
 ## Installation
 

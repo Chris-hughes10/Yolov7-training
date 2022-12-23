@@ -651,7 +651,7 @@ class Yolov7Loss:
             pred_matched_target_idxs = match_matrix[:, pred_is_matched].argmax(dim=0)
 
             # Keep only prediction boxes selected by the dynamic ks
-            layer_idxs = layer_idxs[pred_is_matched]
+            layer_idxs = layer_idxs[pred_is_matched.to(device=layer_idxs.device)]
             image_matched_anchor_boxes = image_anchor_boxes[pred_is_matched]
 
             # Duplicate targets as many times as boxes assigned, tensor has size of finally assigned boxes

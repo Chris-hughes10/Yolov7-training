@@ -11,6 +11,7 @@ class Yolov7DetectionHead(nn.Module):
         num_classes: int = 80,
         anchor_sizes_per_layer: torch.Tensor = (),
         strides: torch.Tensor = (),
+        use_implicit_modules: bool = True,
         in_channels_per_layer: List[int] = (),
     ):
         """
@@ -41,14 +42,15 @@ class Yolov7DetectionHead(nn.Module):
             nn.Conv2d(in_channels, self.num_outputs * self.num_anchor_sizes, 1)
             for in_channels in in_channels_per_layer[: self.num_layers]
         )  # _conv2d_list
-        self.ia = nn.ModuleList(
-            ImplicitAdd(in_channels)
-            for in_channels in in_channels_per_layer[: self.num_layers]
-        )  # _impl_add_list
-        self.im = nn.ModuleList(
-            ImplicitMultiply(self.num_outputs * self.num_anchor_sizes)
-            for _ in in_channels_per_layer[: self.num_layers]
-        )  # _impl_mult_list
+        if use_implicit_modules:
+            self.ia = nn.ModuleList(
+                ImplicitAdd(in_channels)
+                for in_channels in in_channels_per_layer[: self.num_layers]
+            )  # _impl_add_list
+            self.im = nn.ModuleList(
+                ImplicitMultiply(self.num_outputs * self.num_anchor_sizes)
+                for _ in in_channels_per_layer[: self.num_layers]
+            )  # _impl_mult_list
 
     def forward(self, x):
         for layer_idx in range(self.num_layers):
@@ -56,8 +58,11 @@ class Yolov7DetectionHead(nn.Module):
         return x
 
     def layer_forward(self, x, layer_idx):
-        x[layer_idx] = self.m[layer_idx](self.ia[layer_idx](x[layer_idx]))
-        x[layer_idx] = self.im[layer_idx](x[layer_idx])
+        if hasattr(self, "ia") and hasattr(self, "im"):
+            x[layer_idx] = self.m[layer_idx](self.ia[layer_idx](x[layer_idx]))
+            x[layer_idx] = self.im[layer_idx](x[layer_idx])
+        else:
+            x[layer_idx] = self.m[layer_idx](x[layer_idx])
 
         batch_size, _, grid_rows, grid_cols = x[layer_idx].shape
         x[layer_idx] = (

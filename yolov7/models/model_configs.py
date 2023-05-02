@@ -1175,7 +1175,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
     detection_head = Yolov7DetectionHead
 
     return {
-        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-tiny_training_state_dict.pt",
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-tiny_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,

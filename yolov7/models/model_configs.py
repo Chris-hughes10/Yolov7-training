@@ -151,7 +151,7 @@ def get_yolov7_config(num_classes=80, anchor_sizes_per_layer=None, num_channels=
                 [102, 103, 104],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],
         ],
     }
@@ -308,7 +308,7 @@ def get_yolov7x_config(num_classes=80, anchor_sizes_per_layer=None, num_channels
                 [118, 119, 120],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],
         ],  # Detect(P3, P4, P5)
     }
@@ -467,7 +467,7 @@ def get_yolov7_w6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [114, 115, 116, 117, 118, 119, 120, 121],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -670,7 +670,7 @@ def get_yolov7_d6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [158, 159, 160, 161, 162, 163, 164, 165],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -851,7 +851,7 @@ def get_yolov7_e6_config(num_classes=80, anchor_sizes_per_layer=None, num_channe
                 [136, 137, 138, 139, 140, 141, 142, 143],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],  # Detect(P3, P4, P5, P6)
         ],
     }
@@ -1153,7 +1153,7 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
                 [257, 258, 259, 260, 261, 262, 263, 264],
                 1,
                 detection_head,
-                [num_channels, anchor_sizes_per_layer, strides],
+                [num_channels, anchor_sizes_per_layer, strides, True],
             ],
             # Detect(P3, P4, P5, P6)
         ],
@@ -1175,7 +1175,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
     detection_head = Yolov7DetectionHead
 
     return {
-        "state_dict_path": None,
+        "state_dict_path": "https://github.com/Chris-hughes10/Yolov7-training/releases/download/0.1.0/yolov7-tiny_state_dict.pt",
         "num_classes": num_classes,
         "aux_detection": False,
         "num_channels": num_channels,
@@ -1267,7 +1267,7 @@ def get_yolov7_tiny_config(num_classes=80, anchor_sizes_per_layer=None, num_chan
                 [74, 75, 76],
                 1,
                 detection_head,
-                [num_classes, anchor_sizes_per_layer, strides],
+                [num_classes, anchor_sizes_per_layer, strides, False],
             ],  # Detect(P3, P4, P5)
         ],
     }

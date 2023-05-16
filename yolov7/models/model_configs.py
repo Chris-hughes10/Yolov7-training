@@ -1153,7 +1153,7 @@ def get_yolov7_e6e_config(num_classes=80, anchor_sizes_per_layer=None, num_chann
                 [257, 258, 259, 260, 261, 262, 263, 264],
                 1,
                 detection_head,
-                [num_channels, anchor_sizes_per_layer, strides, True],
+                [num_classes, anchor_sizes_per_layer, strides, True],
             ],
             # Detect(P3, P4, P5, P6)
         ],

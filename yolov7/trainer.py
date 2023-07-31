@@ -127,7 +127,7 @@ class Yolov7Trainer(Trainer):
                 fpn_heads_outputs=fpn_heads_outputs, targets=labels
             )
 
-            preds = self.model.postprocess(fpn_heads_outputs, conf_thres=0.001)
+            preds = self.get_model().postprocess(fpn_heads_outputs, conf_thres=0.001)
 
             if self.filter_eval_predictions is not None:
                 preds = self.filter_eval_predictions(preds)

@@ -141,10 +141,10 @@ def main(
     num_classes = 1
 
     # create datasets
-    train_ds = DatasetAdaptor(
+    train_ds = CarsDatasetAdaptor(
         images_path, train_df, transforms=create_base_transforms(image_size)
     )
-    eval_ds = DatasetAdaptor(images_path, valid_df)
+    eval_ds = CarsDatasetAdaptor(images_path, valid_df)
 
     mds = MosaicMixupDataset(
         train_ds,

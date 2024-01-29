@@ -618,13 +618,13 @@ class Yolov7Loss:
             pred_objectness = image_preds[:, [PredIdx.OBJ]]
             pred_class_probs = (
                 (pred_class_scores.sigmoid_() * pred_objectness.sigmoid_())
-                .sqrt_()
                 .unsqueeze(dim=0)
                 .repeat(num_image_targets, 1, 1)
             )
 
-            pair_wise_cls_loss = F.binary_cross_entropy(
-                pred_class_probs, target_class_probs, reduction="none"
+            y = pred_class_probs.sqrt_()
+            pair_wise_cls_loss = F.binary_cross_entropy_with_logits(
+                torch.log(y/(1-y)), target_class_probs, reduction="none"
             ).sum(-1)
 
             # TODO: This 3.0 is probably a constant that should be named

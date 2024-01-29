@@ -622,6 +622,8 @@ class Yolov7Loss:
                 .repeat(num_image_targets, 1, 1)
             )
 
+            # binary_cross_entropy_with_logits is needed for AMP
+            # log(y/(1-y)) reverses the sigmoid function (logit)
             y = pred_class_probs.sqrt_()
             pair_wise_cls_loss = F.binary_cross_entropy_with_logits(
                 torch.log(y/(1-y)), target_class_probs, reduction="none"
